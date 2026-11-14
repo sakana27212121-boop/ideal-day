@@ -87,7 +87,7 @@ export class DB {
       const out = []; let cur = this.cursor[t];
       for (let page = 0; page < 20; page++) {
         let q = this.client.from(t).select('*').order('synced_at', { ascending: true }).limit(1000);
-        if (cur) q = q.gt('synced_at', cur);
+        if (cur) q = q.gte('synced_at', cur); // 同じ時刻の行を取りこぼさないよう境目を含める（変化のない行は下で読み飛ばす）
         const { data, error } = await q;
         if (error) throw new Error(t + ': ' + error.message);
         out.push(...data); if (data.length) cur = data[data.length - 1].synced_at;

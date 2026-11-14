@@ -5,7 +5,7 @@ const { chromium, devices } = require('playwright');
 const { execFileSync, spawn } = require('child_process');
 const path = require('path');
 
-const REF = 'kagchpteezdmdonuqsda', API = `https://${REF}.supabase.co`, PORT = 8771, BASE = `http://localhost:${PORT}/`;
+const REF = 'mpunorwcdhhwkivwembl', API = `https://${REF}.supabase.co`, PORT = 8771, BASE = `http://localhost:${PORT}/`;
 let failures = 0, passes = 0;
 const ok = (c, m) => { if (c) { passes++; console.log('  ✓ ' + m); } else { failures++; console.log('  ✗ ' + m); } };
 const curl = (args) => execFileSync('curl', ['-sS', ...args], { encoding: 'utf8' });
