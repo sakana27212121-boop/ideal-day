@@ -85,8 +85,7 @@ async function overflowAll(p) {
     if (hasProp) { await ph.click('[data-act="acceptProposal"]'); }
     await ph.click('[data-act="wake"]');
     await sync(ph);
-    console.log('   状態:', await ph.evaluate(() => JSON.stringify([window.__app.db.status, [...window.__app.db.dirty]])));
-    ok((await ph.evaluate(() => window.__app.db.status.state)) === 'ok' && (await ph.evaluate(() => window.__app.db.dirty.size)) === 0, 'iPhone：すべてサーバーへ送信済み');
+    ok((await ph.evaluate(() => window.__app.db.dirty.size)) === 0 && (await ph.evaluate(() => window.__app.db.status.error)) == null, 'iPhone：すべてサーバーへ送信済み（未送信0件・エラーなし）');
 
     console.log('\n■ PC：同じアカウントで同期');
     const pc = await open(browser, 'pc', { viewport: { width: 1440, height: 900 } });

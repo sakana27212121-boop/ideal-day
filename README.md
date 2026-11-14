@@ -37,3 +37,4 @@ PC・iPhone（ホーム画面に追加）で使うWebアプリ。データはSup
 Playwright と Chromium が入った環境で：
 - `node tests/e2e.js` … PC・iPhone表示で主要操作（ログインなしの検証用モード `?local=1`）
 - `node tests/sync.js` … 本物のSupabaseで2端末の同期・オフライン・権限（テスト用ユーザーを作って最後に削除。Supabase管理APIの権限が必要）
+- `node tests/public.js` … 公開ページ（GitHub Pages）で最終確認：ログイン・同期・作業の開始〜終了・予定変更・オフライン起動・表示（テスト用ユーザーを作って最後に削除）
