@@ -65,8 +65,14 @@ async function run(name, ctxOpts) {
   // 3. 生活習慣の記録（ホームから）
   await click('[data-act="wake"]');
   ok((await text()).includes('起床 08:00'), '起床ボタンで時刻が自動記録される');
+  ok((await p.locator('.stat .bar', { hasText: '食事' }).innerText()).includes('未記録'), '食事を記録する前は「0」ではなく「未記録」と表示される');
   await click('.stat [data-act="habit"]');
-  ok((await text()).includes('1/3'), '食事の記録がステータスに反映される');
+  ok((await p.locator('.stat .bar', { hasText: '食事' }).innerText()).includes('1（未2）'), '食事の記録がステータスに反映され、未記録の食事と区別される');
+  const exBtn = p.locator('.stat [data-act="habit"]', { hasText: '運動' });
+  await exBtn.click(); ok((await exBtn.innerText()).includes('✓'), '習慣ボタン：1回押すと「した」');
+  await exBtn.click(); ok((await exBtn.innerText()).includes('×') && (await p.locator('.stat .bar', { hasText: '運動' }).innerText()).includes('なし'), '習慣ボタン：2回目で「しなかった」');
+  await exBtn.click(); ok(!(await exBtn.innerText()).match(/[✓×]/) && (await p.locator('.stat .bar', { hasText: '運動' }).innerText()).includes('未記録'), '習慣ボタン：3回目で「未記録」に戻る');
+  await exBtn.click(); await exBtn.click(); // 「しなかった」にしておく（書き出しで確認）
   await shot('02-home');
 
   // 4. タスク開始 → 一時停止 → 再開（予定の10:30に開始）
@@ -180,6 +186,10 @@ async function run(name, ctxOpts) {
   let ct = await p.inputValue('#c-text');
   ok(ct.includes('## 日々の記録') && ct.includes('企画資料の修正') && ct.includes('理想の生活'), '相談用に、理想・日々の記録・タスクが書き出される');
   ok(ct.includes('4ページ目の表から再開') && ct.includes('推測で埋めていません'), '自由記述（次に始める場所）を含み、事実のみであることを明記');
+  const todayRow = ct.split('\n').find((l) => l.startsWith('| 11/16 '));
+  const prevRow = ct.split('\n').find((l) => l.startsWith('| 11/15 '));
+  ok(todayRow && todayRow.includes('| 1（未2） | × |'), `書き出しでも、食事の未記録分と「運動しなかった」が区別される（${todayRow}）`);
+  ok(prevRow && prevRow.includes('| − | − |'), '記録のない日の食事・運動は「−」（0ではない）');
   await p.locator('#c-free').uncheck();
   ct = await p.inputValue('#c-text');
   ok(!ct.includes('4ページ目の表から再開') && ct.includes('企画資料の修正'), '自由記述を外すと、文章の記録は書き出されない');

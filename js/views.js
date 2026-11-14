@@ -43,8 +43,10 @@ export function nav(V, db) {
 function statusWin(D, cls = '') {
   const I = D.idealOrDefault(), st = D.state() || {}, habits = D.habits(), today = D.today();
   const exp = D.db.all('work_sessions').reduce((a, s) => a + (s.minutes || 0), 0), lv = 1 + Math.floor(exp / 300);
-  const meals = habits.filter((h) => h.kind === 'meal'), mealsDone = meals.filter((m) => D.habitLog(today, m.id)).length;
-  const ex = habits.find((h) => h.kind === 'exercise'), exDone = ex && D.habitLog(today, ex.id);
+  const meals = habits.filter((h) => h.kind === 'meal'), ms = D.mealStatus(today), mealsDone = ms.done;
+  const ex = habits.find((h) => h.kind === 'exercise'), exSt = ex ? D.habitStatus(today, ex.id) : null, exDone = exSt === true;
+  // 習慣ボタン：未記録 → した（緑）→ しなかった（×）→ 未記録
+  const hb = (h) => { const st = D.habitStatus(today, h.id); return `<button class="btn ${st === true ? 'on' : st === false ? 'off' : ''}" data-act="habit" data-id="${h.id}" aria-label="${E(h.name)}：${st === true ? 'した' : st === false ? 'しなかった' : '未記録'}（押すと切り替え）">${E(h.name)}${st === true ? ' ✓' : st === false ? ' ×' : ''}</button>`; };
   const bar = (n, c, v, max, txt) => `<div class="bar"><span>${n}</span><div class="meter" role="img" aria-label="${n} ${txt}"><i style="--c:${c};width:${Math.max(0, Math.min(100, (v / max) * 100))}%"></i></div><b>${txt}</b></div>`;
   const wake = st.wake_at ? new Date(st.wake_at) : null, bed = st.bed_at ? new Date(st.bed_at) : null;
   const hm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -55,14 +57,12 @@ function statusWin(D, cls = '') {
       <div class="bars">
         ${bar('睡眠', 'var(--hp)', st.sleep_hours || 0, I.sleep_hours, st.sleep_hours != null ? st.sleep_hours + '/' + I.sleep_hours + 'h' : '未記録')}
         ${bar('元気', 'var(--mp)', st.energy || 0, 5, st.energy ? st.energy + '/5' : '未記録')}
-        ${bar('食事', 'var(--food)', mealsDone, Math.max(1, meals.length), mealsDone + '/' + meals.length)}
-        ${bar('運動', 'var(--grass)', exDone ? 1 : 0, 1, exDone ? '済' : 'まだ')}
+        ${bar('食事', 'var(--food)', mealsDone, Math.max(1, meals.length), ms.known ? D.mealText(ms) : '未記録')}
+        ${bar('運動', 'var(--grass)', exDone ? 1 : 0, 1, exSt === true ? '済' : exSt === false ? 'なし' : '未記録')}
       </div></div></div>
     <div class="quick">
       <button class="btn ${wake ? 'on' : ''}" data-act="${wake ? 'undoWake' : 'wake'}" aria-pressed="${!!wake}">${wake ? '起床 ' + hm(wake) : '起きた'}</button>
-      ${meals.map((m) => { const d = D.habitLog(today, m.id); return `<button class="btn ${d ? 'on' : ''}" data-act="habit" data-id="${m.id}" aria-pressed="${!!d}">${E(m.name)}</button>`; }).join('')}
-      ${ex ? `<button class="btn ${exDone ? 'on' : ''}" data-act="habit" data-id="${ex.id}" aria-pressed="${!!exDone}">${E(ex.name)}</button>` : ''}
-      ${custom.map((h) => { const d = D.habitLog(today, h.id); return `<button class="btn ${d ? 'on' : ''}" data-act="habit" data-id="${h.id}" aria-pressed="${!!d}">${E(h.name)}</button>`; }).join('')}
+      ${meals.map(hb).join('')}${ex ? hb(ex) : ''}${custom.map(hb).join('')}
       <button class="btn" data-act="rest">休憩した${st.rest_count ? '（' + st.rest_count + '）' : ''}</button>
       <button class="btn ${bed ? 'on' : ''}" data-act="${bed ? 'undoBed' : 'bed'}" aria-pressed="${!!bed}">${bed ? '就寝 ' + hm(bed) : '寝る'}</button>
     </div>
@@ -126,9 +126,10 @@ export function habits(D) {
       <label class="fld"><span>ひとこと（任意）</span><input id="f-note" value="${E(st.note || '')}" placeholder="例：午後は眠かった"></label><div class="row"><button class="btn small" data-act="saveNote">保存</button></div></section>
     <section class="win"><span class="tag">理想と実績（直近7日）</span><div class="scroll"><table class="wide">
       <tr><th>日付</th><th>起床</th><th>睡眠</th><th>食事</th><th>運動</th><th>元気</th><th>充実</th></tr>
-      ${a.rows.map((r) => `<tr><td>${md(r.date)}</td><td class="${r.wake == null ? '' : r.wake - idealWake <= 15 ? 'good' : 'bad'}">${r.wake == null ? '−' : fmt(r.wake)}</td><td class="${r.sleep == null ? '' : r.sleep >= I.sleep_hours ? 'good' : ''}">${r.sleep == null ? '−' : r.sleep + 'h'}</td><td>${r.meals}</td><td>${r.exercise ? '◯' : '−'}</td><td>${r.energy ?? '−'}</td><td>${r.fulfill ?? '−'}</td></tr>`).join('')}
+      ${a.rows.map((r) => `<tr><td>${md(r.date)}</td><td class="${r.wake == null ? '' : r.wake - idealWake <= 15 ? 'good' : 'bad'}">${r.wake == null ? '−' : fmt(r.wake)}</td><td class="${r.sleep == null ? '' : r.sleep >= I.sleep_hours ? 'good' : ''}">${r.sleep == null ? '−' : r.sleep + 'h'}</td><td>${D.mealText(r.meal)}</td><td>${r.exercise === true ? '◯' : r.exercise === false ? '×' : '−'}</td><td>${r.energy ?? '−'}</td><td>${r.fulfill ?? '−'}</td></tr>`).join('')}
       <tr><th>理想</th><th>${E(I.wake_time)}</th><th>${I.sleep_hours}h</th><th>${(I.meals || []).length}</th><th>${I.exercise_min ? '毎日' : '−'}</th><th></th><th></th></tr></table></div>
-      <p class="meta read" style="margin:8px 0 0">起床の達成 ${a.wakeOk}/${a.wakeN}日 ・ 運動 ${a.exerciseDays}日 ・ 平均睡眠 ${a.sleep ?? '−'}時間（<span class="label rec">記録</span>）</p></section>
+      <p class="meta read" style="margin:8px 0 4px">「−」は未記録。食事の「未2」は2食分が未記録、運動の × はしなかった日です。習慣のボタンは押すたびに「した → しなかった → 未記録」と切り替わります。</p>
+      <p class="meta read" style="margin:0">起床の達成 ${a.wakeOk}/${a.wakeN}日 ・ 運動 ${a.exerciseDays}日（記録${a.exerciseKnown}日中） ・ 平均睡眠 ${a.sleep ?? '−'}時間（<span class="label rec">記録</span>）</p></section>
     <section class="win"><span class="tag">習慣の項目</span>
       ${hs.map((h) => `<div class="item"><div class="head"><span>${E(h.name)} <span class="meta">${E(h.target || '')}</span></span>${h.kind === 'custom' ? `<button class="btn small ghost" data-act="hideHabit" data-id="${h.id}">外す</button>` : ''}</div></div>`).join('')}
       <div class="row start" style="align-items:end"><label class="fld" style="flex:1;min-width:160px;margin:0"><span>習慣を追加（ふつうの名前で）</span><input id="f-habit" placeholder="例：ストレッチ"></label><button class="btn" data-act="addHabit">追加</button></div></section>

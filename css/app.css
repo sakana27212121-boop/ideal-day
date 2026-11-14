@@ -161,3 +161,4 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-nu
 .stat-grid div { border: 2px solid var(--edge); padding: 8px 10px; }
 .stat-grid b { display: block; font-weight: 400; font-size: 20px; color: var(--gold); font-variant-numeric: tabular-nums; }
 table.wide { min-width: 480px; } table.wide th, table.wide td { white-space: nowrap; }
+.btn.off { color: var(--dim); border-color: var(--edge); text-decoration: line-through; }

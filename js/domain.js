@@ -41,7 +41,16 @@ export function createDomain(db) {
   D.state = (date = D.today()) => db.all('daily_states').find((s) => s.date === date) || null;
   D.putState = (date, patch) => { const s = D.state(date); return db.put('daily_states', { ...(s || { id: uid(), date, rest_count: 0 }), ...patch }); };
   D.habitLog = (date, hid) => db.all('habit_logs').find((l) => l.date === date && l.habit_id === hid) || null;
-  D.toggleHabit = (hid, date = D.today()) => { const l = D.habitLog(date, hid); if (l) db.remove('habit_logs', l.id); else db.put('habit_logs', { id: uid(), date, habit_id: hid, done: true, at: new Date().toISOString() }); };
+  // 習慣の記録は3状態：null＝未記録、true＝した、false＝しなかった（未記録を「しなかった」と混同しない）
+  D.habitStatus = (date, hid) => { const l = D.habitLog(date, hid); return l ? l.done !== false : null; };
+  // タップで 未記録 → した → しなかった → 未記録 と切り替える
+  D.toggleHabit = (hid, date = D.today()) => { const l = D.habitLog(date, hid);
+    if (!l) db.put('habit_logs', { id: uid(), date, habit_id: hid, done: true, at: new Date().toISOString() });
+    else if (l.done !== false) db.put('habit_logs', { id: l.id, done: false, at: new Date().toISOString() });
+    else db.remove('habit_logs', l.id); };
+  // 食事の記録状況：done＝食べた数、known＝記録した数、total＝食事の数（known＝0なら未記録）
+  D.mealText = (m) => (!m || !m.known ? '−' : m.known < m.total ? `${m.done}（未${m.total - m.known}）` : `${m.done}/${m.total}`);
+  D.mealStatus = (date) => { const ms = D.habits().filter((h) => h.kind === 'meal'), st = ms.map((m) => D.habitStatus(date, m.id)); return { done: st.filter((x) => x === true).length, known: st.filter((x) => x !== null).length, total: ms.length }; };
   D.recordWake = () => {
     const date = D.today(), now = new Date(), prev = D.state(addDays(date, -1));
     let sleep = null;
@@ -250,9 +259,9 @@ export function createDomain(db) {
       const st = D.state(d) || {}; const ss = sessions.filter((s) => logicalDate(new Date(s.started_at)) === d);
       const fs = ss.map((s) => s.focus).filter(Boolean);
       return { date: d, wake: st.wake_at ? tsMin(st.wake_at, d) : null, sleep: st.sleep_hours ?? null, energy: st.energy ?? null, fulfill: st.fulfill ?? null,
-        exercise: ex ? !!D.habitLog(d, ex.id) : null, meals: meals.filter((m) => D.habitLog(d, m.id)).length, workMin: ss.reduce((a, s) => a + (s.minutes || 0), 0), focus: avg(fs) };
+        exercise: ex ? D.habitStatus(d, ex.id) : null, meal: D.mealStatus(d), meals: D.mealStatus(d).known ? D.mealStatus(d).done : null, workMin: ss.reduce((a, s) => a + (s.minutes || 0), 0), focus: avg(fs) };
     });
-    const has = (r) => r.wake != null || r.sleep != null || r.energy != null || r.fulfill != null || r.workMin > 0 || r.meals > 0 || r.exercise;
+    const has = (r) => r.wake != null || r.sleep != null || r.energy != null || r.fulfill != null || r.workMin > 0 || r.meal.known > 0 || r.exercise != null;
     const recorded = rows.filter(has);
     const period = (s) => { const h = new Date(s.started_at).getHours(); return h >= 4 && h < 12 ? 'am' : h < 17 && h >= 12 ? 'pm' : 'night'; };
     const focusBy = {}; ['am', 'pm', 'night'].forEach((k) => { const f = sessions.filter((s) => period(s) === k && s.focus).map((s) => s.focus); focusBy[k] = { avg: avg(f), n: f.length }; });
@@ -260,7 +269,7 @@ export function createDomain(db) {
     const sum = {
       days, n: recorded.length, rows,
       sleep: avg(rows.map((r) => r.sleep).filter((x) => x != null)), wakeOk: rows.filter((r) => r.wake != null && r.wake - idealWake <= 15).length, wakeN: rows.filter((r) => r.wake != null).length,
-      exerciseDays: rows.filter((r) => r.exercise).length, energy: avg(rows.map((r) => r.energy).filter((x) => x != null)), fulfill: avg(rows.map((r) => r.fulfill).filter((x) => x != null)),
+      exerciseDays: rows.filter((r) => r.exercise === true).length, exerciseKnown: rows.filter((r) => r.exercise != null).length, energy: avg(rows.map((r) => r.energy).filter((x) => x != null)), fulfill: avg(rows.map((r) => r.fulfill).filter((x) => x != null)),
       workMin: rows.reduce((a, r) => a + r.workMin, 0), focusBy, sessions: planned.sort((a, b) => b.started_at.localeCompare(a.started_at)),
       completed: D.tasks().filter((t) => t.status === 'done' && t.completed_at && dates.includes(logicalDate(new Date(t.completed_at)))).length,
     };
@@ -344,10 +353,10 @@ export function createDomain(db) {
     if ((I.priorities || []).length) L.push(`- 大切にしたいこと：${I.priorities.join('／')}`);
     const fx = db.all('recurring_events').filter((e) => e.active !== false);
     if (fx.length) L.push(`- 毎週の固定予定：${fx.map((e) => `${e.title}（${(e.weekdays || []).map((d) => '日月火水木金土'[d]).join('')} ${fmt(e.start_min)}〜${fmt(e.start_min + e.dur)}）`).join('、')}`);
-    L.push('', '## 日々の記録', '| 日付 | 起床 | 睡眠 | 食事 | 運動 | 元気 | 充実度 | 作業時間 | 集中度 |' + (free ? ' ひとこと |' : ''), '|---|---|---|---|---|---|---|---|---|' + (free ? '---|' : ''));
-    a.rows.forEach((r) => { const st = D.state(r.date) || {}; L.push(`| ${md(r.date)} | ${hm(r.wake)} | ${r.sleep ?? '−'} | ${r.meals} | ${r.exercise ? '◯' : '−'} | ${r.energy ?? '−'} | ${r.fulfill ?? '−'} | ${r.workMin ? dur(r.workMin) : '−'} | ${r.focus ?? '−'} |` + (free ? ` ${(st.note || '−').replace(/[|\n]/g, ' ')} |` : '')); });
+    L.push('', '## 日々の記録', '（「−」は未記録。食事は食べた数で、「未2」は2食分が未記録。運動は ◯＝した、×＝しなかった）', '| 日付 | 起床 | 睡眠 | 食事 | 運動 | 元気 | 充実度 | 作業時間 | 集中度 |' + (free ? ' ひとこと |' : ''), '|---|---|---|---|---|---|---|---|---|' + (free ? '---|' : ''));
+    a.rows.forEach((r) => { const st = D.state(r.date) || {}; L.push(`| ${md(r.date)} | ${hm(r.wake)} | ${r.sleep ?? '−'} | ${D.mealText(r.meal)} | ${r.exercise === true ? '◯' : r.exercise === false ? '×' : '−'} | ${r.energy ?? '−'} | ${r.fulfill ?? '−'} | ${r.workMin ? dur(r.workMin) : '−'} | ${r.focus ?? '−'} |` + (free ? ` ${(st.note || '−').replace(/[|\n]/g, ' ')} |` : '')); });
     const custom = D.habits().filter((h) => h.kind === 'custom');
-    if (custom.length) { L.push('', '## 独自の習慣（実施した日数）'); custom.forEach((h) => L.push(`- ${h.name}：${a.rows.filter((r) => D.habitLog(r.date, h.id)).length}/${days}日`)); }
+    if (custom.length) { L.push('', '## 独自の習慣（実施した日数）'); custom.forEach((h) => { const st = a.rows.map((r) => D.habitStatus(r.date, h.id)); L.push(`- ${h.name}：した ${st.filter((x) => x === true).length}日／しなかった ${st.filter((x) => x === false).length}日／未記録 ${st.filter((x) => x === null).length}日`); }); }
     L.push('', '## 未完了のタスク');
     const open = D.openTasks();
     if (!open.length) L.push('- なし');
@@ -355,7 +364,7 @@ export function createDomain(db) {
     L.push('', '## 作業セッション（新しい順、最大30件）');
     if (!a.sessions.length) L.push('- なし');
     a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.plan ?? '−'}分／実績${x.minutes}分／${x.status || '−'}／集中${x.focus ?? '−'}` + (free && x.problem ? `／問題：${x.problem}` : '')); });
-    L.push('', '## 集計', `- 平均睡眠 ${a.sleep ?? '−'}時間、理想どおりの起床 ${a.wakeOk}/${a.wakeN}日、運動 ${a.exerciseDays}日、平均充実度 ${a.fulfill ?? '−'}、作業 ${dur(a.workMin)}、完了タスク ${a.completed}件`,
+    L.push('', '## 集計', `- 平均睡眠 ${a.sleep ?? '−'}時間、理想どおりの起床 ${a.wakeOk}/${a.wakeN}日、運動 ${a.exerciseDays}日（記録 ${a.exerciseKnown}日中）、平均充実度 ${a.fulfill ?? '−'}、作業 ${dur(a.workMin)}、完了タスク ${a.completed}件`,
       `- 時間帯別の集中度：午前 ${a.focusBy.am.avg ?? '−'}（${a.focusBy.am.n}回）／午後 ${a.focusBy.pm.avg ?? '−'}（${a.focusBy.pm.n}回）／夜 ${a.focusBy.night.avg ?? '−'}（${a.focusBy.night.n}回）`);
     const ex = D.experiments(); if (ex.length) { L.push('', '## 改善実験'); ex.forEach((e) => { const r = D.result(e.id); L.push(`- ${e.title}（${md(e.start_date)}から${e.days}日・${e.status === 'running' ? '実施中' : e.decision || '終了'}）${r ? '：' + r.summary : ''}`); }); }
     L.push('', '## お願い', '- 上の記録（事実）と、あなたの推測・提案を分けて書いてください。', '- 記録が少ない点は断定せず、「傾向」「仮説」として扱ってください。', '- 予定や習慣の変更は提案にとどめてください（反映するかは私が決めます）。');
