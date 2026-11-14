@@ -191,7 +191,7 @@ const acts = {
     V.busy = true; render();
     const { data, error } = await client.auth.signUp({ email, password: pass, options: { emailRedirectTo: location.origin + location.pathname } });
     V.busy = false;
-    if (error) { V.authMsg = '登録できませんでした：' + error.message; V.authErr = true; }
+    if (error) { V.authMsg = /not allowed|disabled/i.test(error.message) ? '新規登録は停止しています（個人用のアプリです）。登録済みのアカウントでログインしてください' : '登録できませんでした：' + error.message; V.authErr = true; }
     else if (!data.session) { V.signup = false; V.authMsg = '確認メールを送りました。メールのリンクを開いてから、ここでログインしてください'; V.authErr = false; }
     render();
   },
