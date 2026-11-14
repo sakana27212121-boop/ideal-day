@@ -103,6 +103,19 @@ async function run(name, ctxOpts) {
   ok(moved.length > 0, `承認すると予定が動く（${moved.length}件）`);
   ok(after.filter((x) => x[2]).every(([id, s]) => before.find((b) => b[0] === id)[1] === s), '固定予定は動かない');
 
+  // 5b. 「継続」で終えたタスクの再配置（承認制）
+  t = await text(p);
+  ok(t.includes('続きの再配置の提案') && t.includes('企画資料の修正'), '「継続」で終えると、続きを空き時間に入れる提案が出る');
+  const nBefore = await app(p, () => window.__app.D.blocks().filter((b) => b.kind === 'task' && b.status === 'planned').length);
+  await shot('05b-reschedule');
+  await click('[data-act="acceptProposal"]'); await p.waitForTimeout(100);
+  const rs = await app(p, () => { const D = window.__app.D; const bs = D.blocks(); const nb = bs.filter((b) => b.kind === 'task' && b.status === 'planned' && D.task(b.task_id).title === '企画資料の修正');
+    const overlap = nb.some((x) => bs.some((y) => y.id !== x.id && x.start_min < y.start_min + y.dur && y.start_min < x.start_min + x.dur));
+    return { n: bs.filter((b) => b.kind === 'task' && b.status === 'planned').length, nb: nb.map((b) => b.start_min), overlap, now: (new Date().getHours() * 60 + new Date().getMinutes()) }; });
+  ok(rs.n === nBefore + 1 && rs.nb.length === 1 && rs.nb[0] >= rs.now, `承認すると、続きが今より後の時間割に入る（${rs.nb.map((m) => Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0')).join(',')}）`);
+  ok(!rs.overlap, '再配置した枠はほかの予定と重ならない');
+  ok(!(await text(p)).includes('続きの再配置の提案'), '承認後は提案が消える');
+
   // 6. 再読み込みしても残る・次回の開始時に引き継ぎが出る
   await p.reload(); await p.waitForTimeout(500);
   await click('[data-act="tab"][data-v="tasks"]');
@@ -121,6 +134,7 @@ async function run(name, ctxOpts) {
   await click('[data-act="open-end"][data-status="中断"]');
   ok(await p.locator('input[name="status"][value="中断"]').isChecked(), '中断ボタンから開くと状態が「中断」になっている');
   await click('[data-act="end"]'); await p.waitForTimeout(100);
+  ok(!(await text(p)).includes('続きの再配置の提案'), '「中断」では再配置の提案は出ない（予定変更の提案のみ）');
   await click('[data-act="tab"][data-v="tasks"]');
   ok(await p.locator('.item', { hasText: '数学Webテスト作成' }).locator('[data-act="open-start"]', { hasText: '再開' }).count() === 1, '中断したタスクは「再開」として残る');
 

@@ -99,17 +99,24 @@ export function createDomain(db) {
     db.commit();
     D.placeTasks(date, null, key);
   };
-  // 空き時間にタスクを入れる（集中しやすい時間帯を優先）
-  D.placeTasks = (date, fromMin, keyFn) => {
+  // 空き時間の一覧（override：{予定ID: 仮の開始分} で「提案を承認した後」の状態を想定できる）
+  D.freeWindows = (date, fromMin, override = {}) => {
     const I = D.idealOrDefault();
     const lo = Math.max(toMin(I.work_start) ?? toMin(I.wake_time) + 60, fromMin ?? 0), hi = toMin(I.work_end) ?? (toMin(I.bed_time) - 120);
-    const busy = D.blocks(date).map((b) => [b.start_min, b.start_min + b.dur]).sort((a, b) => a[0] - b[0]);
-    const scheduled = new Set(D.blocks(date).filter((b) => b.kind === 'task').map((b) => b.task_id));
+    const busy = D.blocks(date).map((b) => { const st = override[b.id] ?? b.start_min; return [st, st + b.dur]; }).sort((a, b) => a[0] - b[0]);
     let wins = []; let cur = lo;
     busy.forEach(([s, e]) => { if (s > cur) wins.push([cur, Math.min(s, hi)]); cur = Math.max(cur, e); });
     if (cur < hi) wins.push([cur, hi]);
-    wins = wins.filter(([s, e]) => e - s >= 15).map(([s, e]) => [Math.ceil(s / 5) * 5, e]);
-    const pref = { am: (w) => w[0], pm: (w) => (w[0] >= 720 ? w[0] - 2000 : w[0]), night: (w) => (w[0] >= 1020 ? w[0] - 3000 : w[0]) }[I.focus_period] || ((w) => w[0]);
+    return wins.filter(([s, e]) => e - s >= 15).map(([s, e]) => [Math.ceil(s / 5) * 5, e]).filter(([s, e]) => e - s >= 15);
+  };
+  D.focusPref = () => ({ am: (w) => w[0], pm: (w) => (w[0] >= 720 ? w[0] - 2000 : w[0]), night: (w) => (w[0] >= 1020 ? w[0] - 3000 : w[0]) }[D.idealOrDefault().focus_period] || ((w) => w[0]));
+  D.findSlot = (date, L, fromMin, override) => { const pref = D.focusPref(); const w = D.freeWindows(date, fromMin, override).sort((a, b) => pref(a) - pref(b)).find((x) => x[1] - x[0] >= L); return w ? w[0] : null; };
+  // 空き時間にタスクを入れる（集中しやすい時間帯を優先）
+  D.placeTasks = (date, fromMin, keyFn) => {
+    const I = D.idealOrDefault();
+    const scheduled = new Set(D.blocks(date).filter((b) => b.kind === 'task').map((b) => b.task_id));
+    const wins = D.freeWindows(date, fromMin);
+    const pref = D.focusPref();
     let placed = 0;
     for (const t of D.openTasks()) {
       if (scheduled.has(t.id)) continue;
@@ -184,8 +191,10 @@ export function createDomain(db) {
       const endMin = nowMin(endedAt), planEnd = b.start_min + b.dur, delta = Math.round((endMin - planEnd) / 5) * 5;
       if (Math.abs(delta) >= 10 && b.date === D.today()) proposal = D.makeShiftProposal(b, delta, endMin);
     }
+    let resched = null;
+    if (f.status === '継続' && (!b || b.date === D.today())) resched = D.makeRescheduleProposal(s.task_id, nowMin(endedAt), proposal);
     db.commit();
-    return { minutes, proposal };
+    return { minutes, proposal, resched };
   };
   D.makeShiftProposal = (b, delta, endMin) => {
     const date = b.date, all = D.blocks(date);
@@ -200,11 +209,33 @@ export function createDomain(db) {
       text: `「${task ? task.title : D.blockLabel(b)}」が予定より${Math.abs(delta)}分${delta > 0 ? '長くかかりました' : '早く終わりました'}。以降の予定を${Math.abs(delta)}分${delta > 0 ? '後ろ' : '前'}にずらしますか？`,
       basis: `予定の終了 ${fmt(b.start_min + b.dur)} → 実際の終了 ${fmt(endMin)}`, payload: { delta, moves, conflicts, fixed: fixed.map((f) => f.title) } }, { batch: true });
   };
+  // 「継続」で終えたタスクを今日の空き時間に入れ直す案（承認後に反映。固定予定は動かさない）
+  D.makeRescheduleProposal = (taskId, fromMin, shift) => {
+    const t = D.task(taskId); if (!t || t.status === 'done') return null;
+    const date = D.today();
+    if (D.blocks(date).some((x) => x.task_id === taskId && x.status === 'planned' && x.start_min >= fromMin)) return null; // すでに後で予定あり
+    const override = {}; if (shift && shift.payload) (shift.payload.moves || []).forEach((m) => { override[m.id] = m.to; });
+    const L = D.predictMin(t), start = D.findSlot(date, L, Math.ceil(fromMin / 5) * 5, override);
+    if (start == null) return { none: true };
+    return db.put('improvement_proposals', { id: uid(), kind: 'reschedule', date, status: 'new', source: 'rule',
+      text: `「${t.title}」の続きを ${fmt(start)}〜${fmt(start + L)}（${dur(L)}）に入れますか？`,
+      basis: `「継続」で終了したため、今日の空き時間から提案しています${shift ? '（予定変更の提案を承認した場合の時間割で計算）' : ''}`, payload: { task_id: taskId, start, dur: L } }, { batch: true });
+  };
+  D.proposalsToday = () => db.all('improvement_proposals').filter((p) => (p.kind === 'schedule' || p.kind === 'reschedule') && p.status === 'new' && p.date === D.today()).sort((a, b) => (a.kind === 'schedule' ? 0 : 1) - (b.kind === 'schedule' ? 0 : 1) || a.updated_at.localeCompare(b.updated_at));
   D.scheduleProposal = () => db.all('improvement_proposals').filter((p) => p.kind === 'schedule' && p.status === 'new' && p.date === D.today()).sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] || null;
   D.acceptProposal = (id) => {
     const p = db.get('improvement_proposals', id); if (!p) return;
+    if (p.kind === 'reschedule') {
+      const { task_id, dur: L } = p.payload; let start = p.payload.start;
+      const free = D.freeWindows(p.date, 0).some(([s, e]) => s <= start && start + L <= e);
+      if (!free) { start = D.findSlot(p.date, L, Math.ceil(nowMin() / 5) * 5); if (start == null) return { ok: false }; }
+      db.put('schedule_blocks', { id: uid(), date: p.date, start_min: start, dur: L, kind: 'task', task_id, fixed: false, status: 'planned', source: 'user' }, { batch: true });
+      db.put('improvement_proposals', { id, status: 'accepted', payload: { ...p.payload, start } }, { batch: true }); db.commit();
+      return { ok: true, start, moved: start !== p.payload.start };
+    }
     (p.payload.moves || []).forEach((m) => { const b = db.get('schedule_blocks', m.id); if (b && !b.fixed && b.status === 'planned') db.put('schedule_blocks', { id: b.id, start_min: m.to }, { batch: true }); });
     db.put('improvement_proposals', { id, status: 'accepted' }, { batch: true }); db.commit();
+    return { ok: true };
   };
   D.rejectProposal = (id) => db.put('improvement_proposals', { id, status: 'dismissed' });
 

@@ -100,14 +100,18 @@ export function routeWin(D, opts = {}) {
 function tipWin(D) { const t = D.tip(); return `<section class="win tip"><span class="tag">${T('hint')}</span><p><span class="label ${t.kind === '実験' ? 'exp' : 'ai'}">${t.kind}</span>${E(t.text)}</p><p class="meta read">${E(t.basis)}</p></section>`; }
 
 function proposalWin(D) {
-  const p = D.scheduleProposal(); if (!p) return '';
-  const pl = p.payload || {};
-  return `<section class="win propose full" role="alert"><span class="tag blue">予定変更の提案</span>
+  return D.proposalsToday().map((p) => {
+    const pl = p.payload || {};
+    if (p.kind === 'reschedule') return `<section class="win propose full" role="alert"><span class="tag blue">続きの再配置の提案</span>
+      <p><span class="label ai">提案</span>${E(p.text)}</p><p class="meta read">${E(p.basis || '')}。固定予定は動かしません。</p>
+      <div class="row"><button class="btn ghost" data-act="rejectProposal" data-id="${p.id}">入れない</button><button class="btn go" data-act="acceptProposal" data-id="${p.id}">時間割に入れる</button></div></section>`;
+    return `<section class="win propose full" role="alert"><span class="tag blue">予定変更の提案</span>
     <p><span class="label ai">提案</span>${E(p.text)}</p>
     <ul>${(pl.moves || []).map((m) => `<li>${E(m.label)}：${fmt(m.from)} → ${fmt(m.to)}</li>`).join('')}</ul>
     ${pl.fixed && pl.fixed.length ? `<p class="meta">固定予定（${pl.fixed.map(E).join('、')}）は動かしません。</p>` : ''}
     ${pl.conflicts && pl.conflicts.length ? `<p class="bad">固定予定と重なります：${pl.conflicts.map(E).join('、')}</p>` : ''}
     <div class="row"><button class="btn ghost" data-act="rejectProposal" data-id="${p.id}">このままにする</button><button class="btn go" data-act="acceptProposal" data-id="${p.id}">ずらす</button></div></section>`;
+  }).join('');
 }
 
 export function home(D) { return `<div class="grid home">${proposalWin(D)}${questWin(D)}${statusWin(D)}${tipWin(D)}${routeWin(D)}</div>`; }
@@ -255,6 +259,7 @@ export function battle(D) {
     <div class="foot" style="justify-content:center;margin-top:14px"><button data-act="mini">ホームを見る</button><button data-act="cancelSession">開始を取り消す</button></div>
   </section></div>`;
 }
+export const fmtMin = (m) => fmt(m);
 export const elapsedClock = (ms) => { const s = Math.floor(ms / 1000), p = (n) => String(n).padStart(2, '0'); return (s >= 3600 ? Math.floor(s / 3600) + ':' : '') + p(Math.floor(s / 60) % 60) + ':' + p(s % 60); };
 
 export function taskSheet(D, V) {

@@ -80,9 +80,12 @@ async function overflowAll(p) {
     await ph.click('[data-act="end"]'); await ph.waitForTimeout(300);
     const s1 = await ph.evaluate(() => window.__app.db.all('work_sessions')[0]);
     ok(s1 && s1.ended_at && s1.minutes >= 49, `iPhone：終了で作業時間が記録される（${s1 && s1.minutes}分）`);
-    const hasProp = await ph.locator('[data-act="acceptProposal"]').count();
-    ok(hasProp === 1, 'iPhone：予定と実績のずれから予定変更の提案が出る');
-    if (hasProp) { await ph.click('[data-act="acceptProposal"]'); }
+    const pt = await text(ph);
+    ok(pt.includes('予定変更の提案'), 'iPhone：予定と実績のずれから予定変更の提案が出る');
+    ok(pt.includes('続きの再配置の提案'), 'iPhone：「継続」で終えると続きの再配置の提案が出る');
+    while (await ph.locator('[data-act="acceptProposal"]').count()) { await ph.locator('[data-act="acceptProposal"]').first().click(); await ph.waitForTimeout(150); }
+    const rb = await ph.evaluate(() => window.__app.D.blocks().filter((b) => b.kind === 'task' && b.status === 'planned').map((b) => b.id));
+    ok(rb.length === 1, 'iPhone：承認すると続きが時間割に入る');
     await ph.click('[data-act="wake"]');
     await sync(ph);
     ok((await ph.evaluate(() => window.__app.db.dirty.size)) === 0 && (await ph.evaluate(() => window.__app.db.status.error)) == null, 'iPhone：すべてサーバーへ送信済み（未送信0件・エラーなし）');
@@ -92,6 +95,7 @@ async function overflowAll(p) {
     await login(pc);
     let t = await text(pc);
     ok(t.includes('最終テストのタスク') && t.includes('公開テスト：次はここから'), 'PC：iPhoneのタスクと引き継ぎが表示される');
+    ok((await pc.evaluate((ids) => ids.every((id) => window.__app.D.blocks().some((b) => b.id === id)), rb)), 'PC：iPhoneで承認した再配置がPCの時間割にも出る');
     ok(t.includes('大学 講義') === (await ph.evaluate(() => window.__app.D.blocks().some((b) => b.title === '大学 講義'))), 'PC：時間割がiPhoneと一致する');
     const blk = await pc.evaluate(() => window.__app.D.blocks().find((b) => b.kind === 'exercise' && b.status === 'planned'));
     await pc.click(`[data-act="shift"][data-id="${blk.id}"][data-n="15"]`); await sync(pc);

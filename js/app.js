@@ -115,11 +115,15 @@ const acts = {
     const f = { status: radio('status') || V.status || '継続', focus: +radio('focus') || null, energy: +radio('energy') || null, progress: val('f-progress'), remaining: val('f-remaining'), next: val('f-next'), problem: val('f-problem') };
     V.sheet = null; V.mini = false; V.tab = 'home';
     const r = D.end(f);
-    toast(f.status === '完了' ? 'タスクを完了にしました' : f.next ? '記録しました。次回はここから再開できます' : '記録しました');
+    toast(f.status === '完了' ? 'タスクを完了にしました' : r && r.resched && r.resched.none ? '記録しました。今日は空きがないため、続きは明日の予定に入ります' : f.next ? '記録しました。次回はここから再開できます' : '記録しました');
     render(); return r;
   },
   cancelSession: () => { D.cancelSession(); toast('開始を取り消しました'); },
-  acceptProposal: (d) => { D.acceptProposal(d.id); toast('予定を変更しました（固定予定はそのまま）'); },
+  acceptProposal: (d) => {
+    const p = D.db.get('improvement_proposals', d.id), r = D.acceptProposal(d.id) || {};
+    if (p && p.kind === 'reschedule') toast(r.ok ? (r.moved ? `空きが変わっていたため ${UI.fmtMin(r.start)} から入れました` : '続きを時間割に入れました') : '今日は入れられる空き時間がありません');
+    else toast('予定を変更しました（固定予定はそのまま）');
+  },
   rejectProposal: (d) => { D.rejectProposal(d.id); toast('予定は変更していません'); },
   shift: (d) => { D.shiftBlock(d.id, +d.n); },
   replan: () => { const n = D.replan(); toast(n ? `${n}件のタスクを空き時間に入れました` : '入れられる空き時間やタスクがありません'); },
