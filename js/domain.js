@@ -331,6 +331,37 @@ export function createDomain(db) {
     return [...(I.goals || []).filter(Boolean).map((g) => `目標「${g}」に週2回15分取り組む`), '新しい学習を週2回15分', '散歩やストレッチを10分', '趣味の時間を週1回1時間', '寝る前に10分の読書'].slice(0, 5);
   };
 
+  // ---------- Claude Codeで相談するための記録の書き出し ----------
+  // 記録された事実だけを並べる（推測や補完はしない）。自由記述を含めるかは本人が選ぶ
+  D.consultText = (days = 14, free = true) => {
+    const I = D.idealOrDefault(), a = D.analysis(days), today = D.today(), hm = (m) => (m == null ? '−' : fmt(m));
+    const L = [];
+    L.push(`# 生活管理アプリ「冒険の書」の記録（${md(addDays(today, -(days - 1)))}〜${md(today)}、${days}日間）`);
+    L.push('以下はアプリに記録された事実です。記録がない項目は「−」で、推測で埋めていません。');
+    L.push('', '## 理想の生活', `- 起床 ${I.wake_time} ／ 就寝 ${I.bed_time} ／ 睡眠 ${I.sleep_hours}時間`, `- 食事：${(I.meals || []).map((m) => `${m.name} ${m.time}`).join('、')}`,
+      `- 運動 ${I.exercise_time || '−'}から${I.exercise_min || 0}分 ／ 自由時間 ${I.free_time || '−'}から${I.free_min || 0}分`, `- 作業できる時間 ${I.work_start || '−'}〜${I.work_end || '−'} ／ 集中しやすい時間帯：${{ am: '午前', pm: '午後', night: '夜' }[I.focus_period] || '−'}`);
+    if ((I.goals || []).length) L.push(`- 目標：${I.goals.join('／')}`);
+    if ((I.priorities || []).length) L.push(`- 大切にしたいこと：${I.priorities.join('／')}`);
+    const fx = db.all('recurring_events').filter((e) => e.active !== false);
+    if (fx.length) L.push(`- 毎週の固定予定：${fx.map((e) => `${e.title}（${(e.weekdays || []).map((d) => '日月火水木金土'[d]).join('')} ${fmt(e.start_min)}〜${fmt(e.start_min + e.dur)}）`).join('、')}`);
+    L.push('', '## 日々の記録', '| 日付 | 起床 | 睡眠 | 食事 | 運動 | 元気 | 充実度 | 作業時間 | 集中度 |' + (free ? ' ひとこと |' : ''), '|---|---|---|---|---|---|---|---|---|' + (free ? '---|' : ''));
+    a.rows.forEach((r) => { const st = D.state(r.date) || {}; L.push(`| ${md(r.date)} | ${hm(r.wake)} | ${r.sleep ?? '−'} | ${r.meals} | ${r.exercise ? '◯' : '−'} | ${r.energy ?? '−'} | ${r.fulfill ?? '−'} | ${r.workMin ? dur(r.workMin) : '−'} | ${r.focus ?? '−'} |` + (free ? ` ${(st.note || '−').replace(/[|\n]/g, ' ')} |` : '')); });
+    const custom = D.habits().filter((h) => h.kind === 'custom');
+    if (custom.length) { L.push('', '## 独自の習慣（実施した日数）'); custom.forEach((h) => L.push(`- ${h.name}：${a.rows.filter((r) => D.habitLog(r.date, h.id)).length}/${days}日`)); }
+    L.push('', '## 未完了のタスク');
+    const open = D.openTasks();
+    if (!open.length) L.push('- なし');
+    open.forEach((t) => { const h = D.handoff(t.id), p = D.project(t.project_id); L.push(`- ${t.title}${p ? `（${p.name}）` : ''}：予定${t.estimate_min}分／実績${D.workedMin(t.id)}分・${D.sessionsOf(t.id).length}回${t.due_date ? `／締切${md(t.due_date)}` : ''}${t.priority === 1 ? '／優先' : ''}` + (free && h && h.next_step ? `／次：${h.next_step}` : '')); });
+    L.push('', '## 作業セッション（新しい順、最大30件）');
+    if (!a.sessions.length) L.push('- なし');
+    a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.plan ?? '−'}分／実績${x.minutes}分／${x.status || '−'}／集中${x.focus ?? '−'}` + (free && x.problem ? `／問題：${x.problem}` : '')); });
+    L.push('', '## 集計', `- 平均睡眠 ${a.sleep ?? '−'}時間、理想どおりの起床 ${a.wakeOk}/${a.wakeN}日、運動 ${a.exerciseDays}日、平均充実度 ${a.fulfill ?? '−'}、作業 ${dur(a.workMin)}、完了タスク ${a.completed}件`,
+      `- 時間帯別の集中度：午前 ${a.focusBy.am.avg ?? '−'}（${a.focusBy.am.n}回）／午後 ${a.focusBy.pm.avg ?? '−'}（${a.focusBy.pm.n}回）／夜 ${a.focusBy.night.avg ?? '−'}（${a.focusBy.night.n}回）`);
+    const ex = D.experiments(); if (ex.length) { L.push('', '## 改善実験'); ex.forEach((e) => { const r = D.result(e.id); L.push(`- ${e.title}（${md(e.start_date)}から${e.days}日・${e.status === 'running' ? '実施中' : e.decision || '終了'}）${r ? '：' + r.summary : ''}`); }); }
+    L.push('', '## お願い', '- 上の記録（事実）と、あなたの推測・提案を分けて書いてください。', '- 記録が少ない点は断定せず、「傾向」「仮説」として扱ってください。', '- 予定や習慣の変更は提案にとどめてください（反映するかは私が決めます）。');
+    return L.join('\n');
+  };
+
   // ---------- AI相談（接続前） ----------
   D.ask = (q) => {
     db.put('ai_messages', { id: uid(), role: 'user', content: q, context: {} }, { batch: true });

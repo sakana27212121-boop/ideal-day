@@ -184,12 +184,15 @@ export function growth(D, V) {
 }
 
 // ---------------- AI相談 ----------------
-export function ai(D) {
-  const ms = D.messages();
-  return `<div class="grid"><section class="win chat"><span class="tag">${T('sage')}に相談</span>
-    <p class="meta read">AI相談は本体の完成後に接続します。接続後は記録を参照して「傾向」として答え、原因は断定しません。</p>
-    ${ms.map((m) => `<p class="${m.role}">${m.role === 'user' ? 'あなた：' : 'お知らせ：'}${E(m.content)}</p>`).join('') || '<p class="meta read">例：「最近午後に集中できないのはなぜ？」</p>'}
-    <div class="row" style="align-items:end"><label class="fld" style="flex:1;margin:0"><span>相談内容</span><input id="f-ask" placeholder="質問を入力"></label><button class="btn" data-act="ask">送る</button></div></section></div>`;
+export function ai(D, V) {
+  const days = V.cDays || 14, free = V.cFree !== false, txt = D.consultText(days, free);
+  return `<div class="grid"><section class="win"><span class="tag">${game ? '賢者に相談' : 'AI相談'}（Claude Codeで）</span>
+    <p class="read" style="margin-top:0">相談は Claude Code で行います（アプリ内のAI接続は見送り中）。下の記録をコピーして Claude Code に貼り付け、続けて相談したいことを書いてください。</p>
+    <p class="meta read">例：「最近午後に集中できないのはなぜ？」「来週の予定の組み方を提案して」「この記録を見て、アプリに足りない機能は？」</p>
+    <div class="seg" role="group" aria-label="期間">${[[7, '7日'], [14, '14日'], [28, '4週間']].map(([n, l]) => `<button class="btn small ${days === n ? '' : 'ghost'}" data-act="cDays" data-n="${n}" aria-pressed="${days === n}">${l}</button>`).join('')}</div>
+    <label class="fld" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="c-free" type="checkbox" style="width:auto;min-height:0" ${free ? 'checked' : ''}><span style="color:var(--text)">自由記述（ひとこと・次に始める場所・問題点）も含める</span></label>
+    <label class="fld"><span>書き出した記録（記録された事実のみ。内容を確認してから使ってください）</span><textarea id="c-text" rows="12" readonly>${E(txt)}</textarea></label>
+    <div class="row"><button class="btn go" data-act="copyConsult">記録をコピー</button></div></section></div>`;
 }
 
 // ---------------- 理想の設定 ----------------

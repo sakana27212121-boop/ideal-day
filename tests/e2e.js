@@ -20,7 +20,7 @@ const app = (p, fn, arg) => p.evaluate(fn, arg);
 async function run(name, ctxOpts) {
   console.log(`\n■ ${name}`);
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ ...ctxOpts, timezoneId: 'Asia/Tokyo', locale: 'ja-JP', deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ ...ctxOpts, timezoneId: 'Asia/Tokyo', locale: 'ja-JP', deviceScaleFactor: 1, permissions: ['clipboard-read', 'clipboard-write'] });
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
@@ -175,11 +175,20 @@ async function run(name, ctxOpts) {
   ok((await text()).includes('28日'), '表示期間を切り替えられる');
   await shot('07-growth');
 
-  // 11. AI相談（未接続）
+  // 11. AI相談（Claude Codeで相談するための記録の書き出し）
   await click('[data-act="tab"][data-v="ai"]');
-  await p.fill('#f-ask', '最近午後に集中できないのはなぜ？'); await click('[data-act="ask"]');
-  t = await text();
-  ok(t.includes('最近午後に集中できないのはなぜ？') && t.includes('まだ接続していません'), 'AI相談は質問を保存し、未接続であることを示す');
+  let ct = await p.inputValue('#c-text');
+  ok(ct.includes('## 日々の記録') && ct.includes('企画資料の修正') && ct.includes('理想の生活'), '相談用に、理想・日々の記録・タスクが書き出される');
+  ok(ct.includes('4ページ目の表から再開') && ct.includes('推測で埋めていません'), '自由記述（次に始める場所）を含み、事実のみであることを明記');
+  await p.locator('#c-free').uncheck();
+  ct = await p.inputValue('#c-text');
+  ok(!ct.includes('4ページ目の表から再開') && ct.includes('企画資料の修正'), '自由記述を外すと、文章の記録は書き出されない');
+  await click('[data-act="cDays"][data-n="28"]');
+  ok((await p.inputValue('#c-text')).includes('28日間'), '書き出す期間を切り替えられる');
+  await click('[data-act="copyConsult"]'); await p.waitForTimeout(200);
+  const cb = await p.evaluate(() => navigator.clipboard.readText().catch(() => ''));
+  ok(cb.includes('## 日々の記録') || (await p.locator('#toast').innerText()).includes('コピー'), '「記録をコピー」でコピーできる（できない環境では選択して案内）');
+  await shot('08-consult');
 
   // 12. 呼び名の切替
   await click('[data-act="tab"][data-v="habits"]');

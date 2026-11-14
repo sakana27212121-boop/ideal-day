@@ -165,7 +165,12 @@ const acts = {
   experiment: (d) => { const h = D.analysis(V.period).hypotheses.find((x) => x.key === d.key) || D.analysis(14).hypotheses.find((x) => x.key === d.key); if (h) { D.startExperiment(h); toast('改善実験を始めました（7日間）'); } },
   evaluate: (d) => { D.evaluate(d.id); toast('記録から結果をまとめました'); },
   decide: (d) => { D.decide(d.id, d.v); toast({ keep: '続けることにしました', revert: '元に戻すことにしました', other: '別の案を試せます' }[d.v]); },
-  ask: () => { const q = val('f-ask'); if (q) D.ask(q); },
+  cDays: (d) => { V.cDays = +d.n; render(); },
+  copyConsult: async () => {
+    const el = document.getElementById('c-text'); if (!el) return;
+    try { await navigator.clipboard.writeText(el.value); toast('コピーしました。Claude Code に貼り付けてください'); }
+    catch (e) { el.focus(); el.select(); try { el.setSelectionRange(0, el.value.length); } catch (x) { /* 選択できない環境 */ } toast('自動でコピーできませんでした。選択された文章をコピーしてください'); }
+  },
   evAdd: () => { V.events = readEvents(); V.events.push({ id: uid(), title: '', weekdays: [1], start_min: 540, dur: 90, kind: 'fixed', active: true }); render(); },
   evDel: (d) => { V.events = readEvents(); V.events.splice(+d.i, 1); render(); },
   saveIdeal: () => {
@@ -223,6 +228,7 @@ root.addEventListener('click', (e) => {
   const done = () => { if (V.pending) { V.pending = false; render(); } };
   if (r && typeof r.then === 'function') r.then(done, done); else done();
 });
+root.addEventListener('change', (e) => { if (e.target.id === 'c-free') { V.cFree = e.target.checked; render(); } });
 root.addEventListener('input', (e) => { if (e.target.id === 'f-memo') { clearTimeout(V.memoT); const v = e.target.value; V.memoT = setTimeout(() => D.memo(v), 600); } });
 root.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && V.sheet) { acts.close(); return; }
