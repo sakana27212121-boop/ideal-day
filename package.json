@@ -1,0 +1,10 @@
+{
+  "name": "ideal-day",
+  "private": true,
+  "description": "冒険の書：生活管理アプリ",
+  "scripts": {
+    "serve": "python3 -m http.server 8765",
+    "test": "node tests/e2e.js",
+    "test:sync": "node tests/sync.js"
+  }
+}
