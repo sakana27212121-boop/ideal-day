@@ -14,8 +14,8 @@ export const setTerms = (mode) => { game = mode !== 'plain'; };
 export const T = (k) => TERMS[k][game ? 0 : 1];
 export const isGame = () => game;
 
-const KC = { fixed: 'var(--hp)', task: 'var(--gold)', meal: 'var(--food)', rest: 'var(--mp)', exercise: 'var(--grass)', habit: 'var(--violet)', free: 'var(--pink)' };
-export const KIND = { task: 'タスク', fixed: '固定予定', meal: '食事', rest: '休憩', exercise: '運動', habit: '生活', free: '自由時間' };
+const KC = { fixed: 'var(--hp)', task: 'var(--gold)', meal: 'var(--food)', rest: 'var(--mp)', exercise: 'var(--grass)', habit: 'var(--violet)', free: 'var(--pink)', buffer: '#5d6f68' };
+export const KIND = { task: 'タスク', fixed: '固定予定', meal: '食事', rest: '休憩', exercise: '運動', habit: '生活', free: '自由時間', buffer: '余白' };
 const NAV = [['home', 'ホーム', '野営地'], ['habits', '生活習慣', 'ステータス'], ['tasks', 'タスク', 'クエスト'], ['growth', '分析', '冒険の記録'], ['ai', 'AI相談', '賢者']];
 
 // オリジナルのドット絵（旅人）
@@ -146,7 +146,10 @@ export function tasks(D) {
       <span class="meta">予定 ${dur(t.estimate_min)} ／ 実績 ${dur(D.workedMin(t.id))}（${s.length}回）</span></div>
       ${h && h.next_step ? `<div class="meta read">次：${E(h.next_step)}</div>` : ''}
       <div class="row start">${t.status !== 'done' && !running ? `<button class="btn small" data-act="open-start" data-id="${t.id}">${s.length ? '再開' : '開始'}</button>` : ''}<button class="btn small ghost" data-act="sheet" data-v="task" data-id="${t.id}">詳細・編集</button></div></div>`; };
-  return `<div class="grid two"><section class="win"><span class="tag">${T('list')}</span>
+  const rec = D.recurringTasks();
+  const recWin = rec.length ? `<section class="win"><span class="tag">定例の作業（週の型）</span><p class="meta read" style="margin-top:0">時間割の作業枠と結びついた作業です。「完了」にしても次の枠に残ります。</p>
+    ${rec.map((t) => { const h = D.handoff(t.id); return `<div class="item"><div class="head"><span>${E(t.title)}</span><span class="meta">実績 ${dur(D.workedMin(t.id))}（${D.sessionsOf(t.id).length}回）</span></div>${h && h.next_step ? `<div class="meta read">次：${E(h.next_step)}</div>` : ''}<div class="row start">${!running ? `<button class="btn small" data-act="open-start" data-id="${t.id}">開始</button>` : ''}</div></div>`; }).join('')}</section>` : '';
+  return `<div class="grid two">${recWin}<section class="win"><span class="tag">${T('list')}</span>
       ${open.length ? open.map(row).join('') : '<p class="meta read">未完了のタスクはありません。</p>'}
       <div class="row start"><button class="btn go" data-act="sheet" data-v="task">＋ ${T('add')}</button></div>
       ${done.length ? `<details style="margin-top:12px"><summary class="meta">完了したタスク（最近10件）</summary>${done.map(row).join('')}</details>` : ''}</section>
@@ -175,8 +178,8 @@ export function growth(D, V) {
           ${r ? `<p class="meta read" style="margin:0"><span class="label rec">結果</span>${E(r.summary)}</p>` : ''}
           ${e.status === 'running' ? `<div class="row start"><button class="btn small" data-act="evaluate" data-id="${e.id}">${di + 1 >= e.days ? '結果を確認' : '途中経過を見る'}</button>${r ? `<button class="btn small" data-act="decide" data-id="${e.id}" data-v="keep">続ける</button><button class="btn small ghost" data-act="decide" data-id="${e.id}" data-v="revert">元に戻す</button><button class="btn small ghost" data-act="decide" data-id="${e.id}" data-v="other">別案を試す</button>` : ''}</div>` : ''}</div>`; }).join('')
         : '<p class="meta read">改善案を「1週間試す」と、ここで効果を確認できます。</p>'}</section>
-    <section class="win"><span class="tag">予定時間と実績</span>${a.sessions.length ? `<div class="scroll"><table class="wide"><tr><th>日付</th><th>タスク</th><th>予定</th><th>実績</th><th>状態</th><th>集中</th></tr>
-      ${a.sessions.slice(0, 30).map((s) => `<tr><td>${md(s.date)}</td><td>${E(s.task || '')}</td><td>${s.plan ? s.plan + '分' : '−'}</td><td>${s.minutes}分</td><td>${E(s.status || '')}</td><td>${s.focus ?? '−'}</td></tr>`).join('')}</table></div>` : '<p class="meta read">作業の記録はまだありません。</p>'}
+    <section class="win"><span class="tag">予定時間と実績</span>${a.sessions.length ? `<div class="scroll"><table class="wide"><tr><th>日付</th><th>タスク</th><th>予定</th><th>実績</th><th>開始のずれ</th><th>状態</th><th>集中</th><th>体調</th></tr>
+      ${a.sessions.slice(0, 30).map((s) => `<tr><td>${md(s.date)}</td><td>${E(s.task || '')}</td><td>${s.plan ? s.plan + '分' : '−'}</td><td>${s.minutes}分</td><td>${s.startGap == null ? '−' : (s.startGap > 0 ? '+' : '') + s.startGap + '分'}</td><td>${E(s.status || '')}</td><td>${s.focus ?? '−'}</td><td>${s.energy ?? '−'}</td></tr>`).join('')}</table></div>` : '<p class="meta read">作業の記録はまだありません。</p>'}
       ${D.paceRatio() ? `<p class="meta read">見積もり補正：実績は予定の平均${D.paceRatio().ratio}倍（${D.paceRatio().n}回分）。自動で予定を組むときに反映しています。</p>` : ''}</section>
     <section class="win"><span class="tag">新しい挑戦</span>
       ${st.ok ? `<p class="read" style="margin:0 0 8px"><span class="label ai">提案</span>生活が安定しています。今の充実を崩さない範囲で、挑戦の候補です。</p>${D.challenges().map((c) => `<div class="item"><div class="head"><span class="read">${E(c)}</span><button class="btn small" data-act="addChallenge" data-v="${E(c)}">習慣に追加</button></div></div>`).join('')}`
@@ -198,7 +201,7 @@ export function ai(D, V) {
 
 // ---------------- 理想の設定 ----------------
 export function setup(D, V) {
-  const I = D.idealOrDefault(), ev = V.events || D.db.all('recurring_events').filter((e) => e.active !== false);
+  const I = D.idealOrDefault(), ev = V.events || D.fixedEvents(), tplN = D.db.all('recurring_events').filter((e) => e.active !== false && (e.kind || 'fixed') !== 'fixed').length;
   const f = (id, label, val, type = 'time', extra = '') => `<label class="fld"><span>${label}</span><input id="${id}" type="${type}" value="${E(val ?? '')}" ${extra}></label>`;
   const first = !D.onboarded();
   return `<div class="grid">
@@ -211,6 +214,7 @@ export function setup(D, V) {
     <section class="win"><span class="tag">大学・仕事</span><div class="fields">
       ${f('i-ws', '作業できる時間（開始）', I.work_start)}${f('i-we', '作業できる時間（終了）', I.work_end)}${f('i-rest', 'タスク後の休憩（分）', I.rest_min, 'number', 'min="0" max="60" inputmode="numeric"')}
       <label class="fld"><span>集中しやすい時間帯</span><select id="i-focus">${[['am', '午前'], ['pm', '午後'], ['night', '夜']].map(([v, l]) => `<option value="${v}" ${I.focus_period === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      ${tplN ? `<p class="meta read" style="margin:6px 0">曜日ごとの時間割（週の型・試行版）が登録されています（${tplN}件）。登録した曜日は、下の理想の時刻ではなく週の型どおりに時間割を作ります。週の型の変更は Claude Code に依頼してください。</p>` : ''}
       <div class="meta" style="margin:6px 0">毎週の固定予定（授業・アルバイトなど）</div>
       ${ev.map((e, i) => `<div class="item" data-ev="${i}"><div class="fields">${f('e-title' + i, '名前', e.title, 'text')}${f('e-start' + i, '開始', fmt(e.start_min))}${f('e-end' + i, '終了', fmt(e.start_min + e.dur))}</div>
         <div class="wds">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" id="e-wd${i}-${d}" ${(e.weekdays || []).includes(d) ? 'checked' : ''}>${WD[d]}</label>`).join('')}<button class="btn small danger" data-act="evDel" data-i="${i}" style="margin-left:auto">削除</button></div></div>`).join('')}

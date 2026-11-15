@@ -28,7 +28,8 @@ export function createDomain(db) {
     if (!habits.find((h) => h.kind === 'exercise')) db.put('habits', { id: uid(), name: '運動', kind: 'exercise', target: v.exercise_min + '分', sort: 10 }, { batch: true });
     if (fixedEvents) {
       const keep = new Set(fixedEvents.map((e) => e.id));
-      db.all('recurring_events').forEach((e) => { if (!keep.has(e.id)) db.remove('recurring_events', e.id, { batch: true }); });
+      // 設定画面で扱うのは固定予定だけ。週の型（kind≠fixed）は消さない
+      db.all('recurring_events').filter((e) => (e.kind || 'fixed') === 'fixed').forEach((e) => { if (!keep.has(e.id)) db.remove('recurring_events', e.id, { batch: true }); });
       fixedEvents.forEach((e) => db.put('recurring_events', e, { batch: true }));
     }
     const s = D.settings();
@@ -73,7 +74,8 @@ export function createDomain(db) {
   D.ensureProject = (name) => { if (!name) return null; const p = D.projects().find((x) => x.name === name); return p ? p.id : db.put('projects', { id: uid(), name }).id; };
   D.tasks = () => db.all('tasks');
   D.task = (id) => db.get('tasks', id);
-  D.openTasks = () => D.tasks().filter((t) => t.status !== 'done').sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') || a.priority - b.priority || a.sort - b.sort);
+  D.openTasks = () => D.tasks().filter((t) => t.status !== 'done' && !t.recurring).sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') || a.priority - b.priority || a.sort - b.sort);
+  D.recurringTasks = () => D.tasks().filter((t) => t.recurring).sort((a, b) => a.sort - b.sort);
   D.saveTask = (v) => db.put('tasks', { status: 'open', priority: 2, estimate_min: 30, sort: D.tasks().length, ...v, id: v.id || uid() });
   D.reopenTask = (id) => db.put('tasks', { id, status: 'open', completed_at: null });
   D.deleteTask = (id) => { db.remove('tasks', id, { batch: true }); db.all('schedule_blocks').filter((b) => b.task_id === id && b.status === 'planned').forEach((b) => db.remove('schedule_blocks', b.id, { batch: true })); db.commit(); };
@@ -95,7 +97,17 @@ export function createDomain(db) {
     if (db.all('schedule_blocks').some((b) => b.date === date) || Object.values(db.data.schedule_blocks).some((b) => b.date === date)) return false;
     D.generate(date); return true;
   };
+  // 週の型：曜日ごとの時間割（固定予定以外も含む）。登録されている曜日は型どおりに作る
+  D.fixedEvents = () => db.all('recurring_events').filter((e) => e.active !== false && (e.kind || 'fixed') === 'fixed');
+  D.templateFor = (date) => db.all('recurring_events').filter((e) => e.active !== false && (e.weekdays || []).includes(weekday(date))).sort((a, b) => a.start_min - b.start_min);
+  D.hasTemplate = (date) => D.templateFor(date).some((e) => (e.kind || 'fixed') !== 'fixed');
   D.generate = (date) => {
+    if (D.hasTemplate(date)) {
+      D.templateFor(date).forEach((e) => { const kind = e.kind || 'fixed';
+        db.put('schedule_blocks', { id: detId(db.uid || 'local', date, 'tp' + e.id), date, start_min: e.start_min, dur: e.dur, kind, title: e.title, task_id: e.task_id || null,
+          fixed: kind === 'fixed', status: 'planned', source: 'template' }, { batch: true }); });
+      db.commit(); return;
+    }
     const I = D.idealOrDefault(), key = (k) => detId(db.uid || 'local', date, k);
     const wake = toMin(I.wake_time); let bed = toMin(I.bed_time); if (bed <= wake) bed += 1440;
     const add = (k, kind, title, start, d, extra = {}) => { if (start == null || !d) return; db.put('schedule_blocks', { id: key(k), date, start_min: start, dur: d, kind, title, fixed: false, status: 'planned', source: 'auto', ...extra }, { batch: true }); };
@@ -177,7 +189,8 @@ export function createDomain(db) {
     if (D.running()) return null;
     const t = D.task(taskId); if (!t) return null;
     const date = D.today();
-    let b = blockId ? db.get('schedule_blocks', blockId) : D.blocks(date).find((x) => x.task_id === taskId && x.status === 'planned');
+    const n0 = nowMin();
+    let b = blockId ? db.get('schedule_blocks', blockId) : D.blocks(date).filter((x) => x.task_id === taskId && x.status === 'planned').sort((p, q) => Math.abs(p.start_min - n0) - Math.abs(q.start_min - n0))[0];
     if (!b) b = D.saveBlock({ date, start_min: Math.floor(nowMin() / 5) * 5, dur: D.predictMin(t), kind: 'task', task_id: taskId, source: 'user' });
     return db.put('work_sessions', { id: uid(), task_id: taskId, block_id: b.id, started_at: new Date().toISOString(), ended_at: null, paused_at: null, paused_ms: 0, memo: '' });
   };
@@ -192,7 +205,8 @@ export function createDomain(db) {
     const endedAt = new Date();
     db.put('work_sessions', { id: s.id, ended_at: endedAt.toISOString(), minutes, status: f.status, focus: f.focus || null, energy: f.energy || null, problem: f.problem || null }, { batch: true });
     if (f.progress || f.remaining || f.next) db.put('handoffs', { id: uid(), task_id: s.task_id, session_id: s.id, progress: f.progress || null, remaining: f.remaining || null, next_step: f.next || null }, { batch: true });
-    if (f.status === '完了') db.put('tasks', { id: s.task_id, status: 'done', completed_at: endedAt.toISOString() }, { batch: true });
+    const tk = D.task(s.task_id);
+    if (f.status === '完了' && !(tk && tk.recurring)) db.put('tasks', { id: s.task_id, status: 'done', completed_at: endedAt.toISOString() }, { batch: true });
     const b = db.get('schedule_blocks', s.block_id);
     let proposal = null;
     if (b) {
@@ -201,7 +215,7 @@ export function createDomain(db) {
       if (Math.abs(delta) >= 10 && b.date === D.today()) proposal = D.makeShiftProposal(b, delta, endMin);
     }
     let resched = null;
-    if (f.status === '継続' && (!b || b.date === D.today())) resched = D.makeRescheduleProposal(s.task_id, nowMin(endedAt), proposal);
+    if (f.status === '継続' && !(tk && tk.recurring) && (!b || b.date === D.today())) resched = D.makeRescheduleProposal(s.task_id, nowMin(endedAt), proposal);
     db.commit();
     return { minutes, proposal, resched };
   };
@@ -265,7 +279,7 @@ export function createDomain(db) {
     const recorded = rows.filter(has);
     const period = (s) => { const h = new Date(s.started_at).getHours(); return h >= 4 && h < 12 ? 'am' : h < 17 && h >= 12 ? 'pm' : 'night'; };
     const focusBy = {}; ['am', 'pm', 'night'].forEach((k) => { const f = sessions.filter((s) => period(s) === k && s.focus).map((s) => s.focus); focusBy[k] = { avg: avg(f), n: f.length }; });
-    const planned = sessions.filter((s) => s.block_id).map((s) => { const b = db.raw('schedule_blocks', s.block_id); return { ...s, plan: b ? b.dur : null, task: (D.task(s.task_id) || db.raw('tasks', s.task_id) || {}).title, date: logicalDate(new Date(s.started_at)) }; });
+    const planned = sessions.filter((s) => s.block_id).map((s) => { const b = db.raw('schedule_blocks', s.block_id); const d0 = new Date(s.started_at); return { ...s, plan: b ? b.dur : null, planStart: b ? b.start_min : null, startGap: b && b.source !== 'user' ? tsMin(s.started_at, logicalDate(d0)) - b.start_min : null, task: (D.task(s.task_id) || db.raw('tasks', s.task_id) || {}).title, date: logicalDate(new Date(s.started_at)) }; });
     const sum = {
       days, n: recorded.length, rows,
       sleep: avg(rows.map((r) => r.sleep).filter((x) => x != null)), wakeOk: rows.filter((r) => r.wake != null && r.wake - idealWake <= 15).length, wakeN: rows.filter((r) => r.wake != null).length,
@@ -361,9 +375,10 @@ export function createDomain(db) {
     const open = D.openTasks();
     if (!open.length) L.push('- なし');
     open.forEach((t) => { const h = D.handoff(t.id), p = D.project(t.project_id); L.push(`- ${t.title}${p ? `（${p.name}）` : ''}：予定${t.estimate_min}分／実績${D.workedMin(t.id)}分・${D.sessionsOf(t.id).length}回${t.due_date ? `／締切${md(t.due_date)}` : ''}${t.priority === 1 ? '／優先' : ''}` + (free && h && h.next_step ? `／次：${h.next_step}` : '')); });
-    L.push('', '## 作業セッション（新しい順、最大30件）');
+    const rt = D.recurringTasks(); if (rt.length) L.push('', '## 定例の作業（週の型）', ...rt.map((t) => `- ${t.title}：実績${D.workedMin(t.id)}分・${D.sessionsOf(t.id).length}回`));
+    L.push('', '## 作業セッション（新しい順、最大30件。開始のずれ＝実際の開始−予定の開始）');
     if (!a.sessions.length) L.push('- なし');
-    a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.plan ?? '−'}分／実績${x.minutes}分／${x.status || '−'}／集中${x.focus ?? '−'}` + (free && x.problem ? `／問題：${x.problem}` : '')); });
+    a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.planStart != null ? fmt(x.planStart) + '〜' : ''}${x.plan ?? '−'}分／実績${x.minutes}分${x.startGap != null ? `／開始のずれ${x.startGap > 0 ? '+' : ''}${x.startGap}分` : ''}／${x.status || '−'}／集中${x.focus ?? '−'}／体調${x.energy ?? '−'}` + (free && x.problem ? `／問題：${x.problem}` : '')); });
     L.push('', '## 集計', `- 平均睡眠 ${a.sleep ?? '−'}時間、理想どおりの起床 ${a.wakeOk}/${a.wakeN}日、運動 ${a.exerciseDays}日（記録 ${a.exerciseKnown}日中）、平均充実度 ${a.fulfill ?? '−'}、作業 ${dur(a.workMin)}、完了タスク ${a.completed}件`,
       `- 時間帯別の集中度：午前 ${a.focusBy.am.avg ?? '−'}（${a.focusBy.am.n}回）／午後 ${a.focusBy.pm.avg ?? '−'}（${a.focusBy.pm.n}回）／夜 ${a.focusBy.night.avg ?? '−'}（${a.focusBy.night.n}回）`);
     const ex = D.experiments(); if (ex.length) { L.push('', '## 改善実験'); ex.forEach((e) => { const r = D.result(e.id); L.push(`- ${e.title}（${md(e.start_date)}から${e.days}日・${e.status === 'running' ? '実施中' : e.decision || '終了'}）${r ? '：' + r.summary : ''}`); }); }

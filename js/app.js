@@ -209,7 +209,7 @@ const acts = {
   syncNow: async () => { await db.sync(); toast(db.status.state === 'ok' ? '同期しました' : db.status.state === 'local' ? 'この端末のみのモードです' : '同期できませんでした。通信状態を確認してください'); },
 };
 function readEvents() {
-  const evs = V.events || D.db.all('recurring_events').filter((e) => e.active !== false);
+  const evs = V.events || D.fixedEvents();
   return evs.map((e, i) => {
     if (!document.getElementById('e-title' + i)) return { ...e };
     const s = toMin(val('e-start' + i)), en = toMin(val('e-end' + i));
