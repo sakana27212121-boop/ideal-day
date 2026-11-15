@@ -94,7 +94,18 @@ export function createDomain(db) {
   D.blockLabel = (b) => (b.kind === 'task' ? ((D.task(b.task_id) || {}).title || '（削除されたタスク）') : b.title);
   D.ensureDay = (date = D.today()) => {
     if (!D.onboarded()) return false;
-    if (db.all('schedule_blocks').some((b) => b.date === date) || Object.values(db.data.schedule_blocks).some((b) => b.date === date)) return false;
+    if (db.all('schedule_blocks').some((b) => b.date === date) || Object.values(db.data.schedule_blocks).some((b) => b.date === date)) return D.healDay(date);
+    D.generate(date); return true;
+  };
+  // 週の型が届く前に理想の生活から作られてしまった日を、週の型で作り直す。
+  // 条件：その曜日に週の型がある／その日の予定がすべて自動作成のまま（手で直した予定・終了した予定・作業記録がない）／週の型を登録した日の翌日以降
+  D.healDay = (date) => {
+    const tpl = D.templateFor(date).filter((e) => (e.kind || 'fixed') !== 'fixed'); if (!tpl.length) return false;
+    const bl = D.blocks(date); if (!bl.length || bl.some((b) => b.source !== 'auto' || b.status !== 'planned')) return false;
+    const ids = new Set(bl.map((b) => b.id)); if (db.all('work_sessions').some((s) => ids.has(s.block_id))) return false;
+    const regDay = logicalDate(new Date(tpl.map((e) => e.updated_at).sort()[0]));
+    if (date <= regDay) return false;
+    bl.forEach((b) => db.remove('schedule_blocks', b.id, { batch: true }));
     D.generate(date); return true;
   };
   // 週の型：曜日ごとの時間割（固定予定以外も含む）。登録されている曜日は型どおりに作る

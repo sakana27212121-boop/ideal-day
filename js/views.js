@@ -87,8 +87,9 @@ function questWin(D) {
 }
 
 export function routeWin(D, opts = {}) {
-  const tl = D.timeline();
-  return `<section class="win full"><span class="tag">${T('route')}</span>
+  const tl = D.timeline(), h = new Date().getHours(), td = D.today();
+  const late = h < 4 ? `<p class="meta read" style="margin-top:0">0時〜4時は前日（${md(td)}）として記録します。${md(addDays(td, 1))}の旅程は4時から表示されます。</p>` : '';
+  return `<section class="win full"><span class="tag">${T('route')}</span>${late}
     ${tl.length ? `<ol class="route">${tl.map((b) => `<li class="${b.state}" style="--c:${KC[b.kind] || '#5d6f68'}"><span class="t">${fmt(b.start_min)}</span><span class="node"></span>
       <button class="lbl" data-act="sheet" data-v="block" data-id="${b.id}" aria-label="${E(b.label)}（${fmt(b.start_min)}から${dur(b.dur)}）を編集">${E(b.label)}${b.fixed ? '<span class="fixed">固定</span>' : ''}<span class="dur">${dur(b.dur)}</span></button>
       ${!b.fixed && b.status === 'planned' && b.state !== 'active' ? `<span class="mv"><button data-act="shift" data-id="${b.id}" data-n="-15" aria-label="${E(b.label)}を15分早める">−15</button><button data-act="shift" data-id="${b.id}" data-n="15" aria-label="${E(b.label)}を15分遅らせる">+15</button></span>` : '<span></span>'}</li>`).join('')}</ol>`

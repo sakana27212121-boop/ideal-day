@@ -93,8 +93,10 @@ setInterval(() => {
   const run = D.running();
   if (run) document.querySelectorAll('[data-elapsed]').forEach((e) => (e.textContent = UI.elapsedClock(D.elapsedMs(run))));
   const m = new Date().getMinutes();
-  if (m !== lastMinute) { lastMinute = m; const day = logicalDate(); if (day !== lastDay) { lastDay = day; D.ensureDay(); } if (V.ready && !V.sheet) softRender(); }
+  if (m !== lastMinute) { lastMinute = m; const day = logicalDate(); if (day !== lastDay) { lastDay = day; newDay(); } if (V.ready && !V.sheet) softRender(); }
 }, 1000);
+// 日付が変わったら、先に同期してから時間割を作る（端末に最新の週の型が届く前に古い設定で作らない）
+async function newDay() { try { await db.sync(); } catch (e) { /* 通信できなくても端末内のデータで続ける */ } D.ensureDay(); render(); }
 setInterval(() => { if (document.visibilityState === 'visible') db.sync(); }, 20000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') db.sync(); });
 window.addEventListener('online', () => db.sync());
