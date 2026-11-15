@@ -81,7 +81,8 @@ async function overflowAll(p) {
     const s1 = await ph.evaluate(() => window.__app.db.all('work_sessions')[0]);
     ok(s1 && s1.ended_at && s1.minutes >= 49, `iPhone：終了で作業時間が記録される（${s1 && s1.minutes}分）`);
     const pt = await text(ph);
-    ok(pt.includes('予定変更の提案'), 'iPhone：予定と実績のずれから予定変更の提案が出る');
+    const later = await ph.evaluate(() => { const D = window.__app.D; const s = window.__app.db.all('work_sessions')[0]; const blk = window.__app.db.raw('schedule_blocks', s.block_id); return D.blocks(blk.date).some((x) => x.id !== blk.id && !x.fixed && x.status === 'planned' && x.start_min >= blk.start_min); });
+    ok(later ? pt.includes('予定変更の提案') : !pt.includes('予定変更の提案'), `iPhone：予定と実績のずれから予定変更の提案が出る（後ろにずらせる予定が${later ? 'ある' : 'ない時間帯は提案なし'}）`);
     const toastTxt = await ph.locator('#toast').innerText().catch(() => '');
     const noSlot = toastTxt.includes('今日は空きがない');
     ok(pt.includes('続きの再配置の提案') || noSlot, `iPhone：「継続」で終えると続きの再配置の提案が出る（今日の空きがない時間帯は、その旨を表示：${noSlot ? '空きなし' : '提案あり'}）`);
