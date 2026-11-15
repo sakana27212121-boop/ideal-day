@@ -82,10 +82,12 @@ async function overflowAll(p) {
     ok(s1 && s1.ended_at && s1.minutes >= 49, `iPhone：終了で作業時間が記録される（${s1 && s1.minutes}分）`);
     const pt = await text(ph);
     ok(pt.includes('予定変更の提案'), 'iPhone：予定と実績のずれから予定変更の提案が出る');
-    ok(pt.includes('続きの再配置の提案'), 'iPhone：「継続」で終えると続きの再配置の提案が出る');
+    const toastTxt = await ph.locator('#toast').innerText().catch(() => '');
+    const noSlot = toastTxt.includes('今日は空きがない');
+    ok(pt.includes('続きの再配置の提案') || noSlot, `iPhone：「継続」で終えると続きの再配置の提案が出る（今日の空きがない時間帯は、その旨を表示：${noSlot ? '空きなし' : '提案あり'}）`);
     while (await ph.locator('[data-act="acceptProposal"]').count()) { await ph.locator('[data-act="acceptProposal"]').first().click(); await ph.waitForTimeout(150); }
     const rb = await ph.evaluate(() => window.__app.D.blocks().filter((b) => b.kind === 'task' && b.status === 'planned').map((b) => b.id));
-    ok(rb.length === 1, 'iPhone：承認すると続きが時間割に入る');
+    ok(noSlot ? rb.length === 0 : rb.length === 1, 'iPhone：承認すると続きが時間割に入る（空きがない時間帯は入らない）');
     await ph.click('[data-act="wake"]');
     await sync(ph);
     ok((await ph.evaluate(() => window.__app.db.dirty.size)) === 0 && (await ph.evaluate(() => window.__app.db.status.error)) == null, 'iPhone：すべてサーバーへ送信済み（未送信0件・エラーなし）');
