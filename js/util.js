@@ -1,5 +1,5 @@
 // 日付・時刻・文字列の小さな道具
-export const DAY_START_HOUR = 4; // 4時までは前日として扱う（夜ふかし対策）
+export const DAY_START_HOUR = 0; // 日付は0時で切り替える（2026-11-16 本人決定。以前は4時）
 export const pad = (n) => String(n).padStart(2, '0');
 const ymd = (x) => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
 export const logicalDate = (d = new Date()) => ymd(new Date(d.getTime() - DAY_START_HOUR * 3600e3));

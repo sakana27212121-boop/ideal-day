@@ -53,9 +53,11 @@ export function createDomain(db) {
   D.mealText = (m) => (!m || !m.known ? '−' : m.known < m.total ? `${m.done}（未${m.total - m.known}）` : `${m.done}/${m.total}`);
   D.mealStatus = (date) => { const ms = D.habits().filter((h) => h.kind === 'meal'), st = ms.map((m) => D.habitStatus(date, m.id)); return { done: st.filter((x) => x === true).length, known: st.filter((x) => x !== null).length, total: ms.length }; };
   D.recordWake = () => {
-    const date = D.today(), now = new Date(), prev = D.state(addDays(date, -1));
+    const date = D.today(), now = new Date();
+    // 直前の就寝：前日の夜に押した場合も、0時を過ぎてから押した場合（当日の記録）もある
+    const beds = [D.state(addDays(date, -1)), D.state(date)].filter((x) => x && x.bed_at).map((x) => new Date(x.bed_at)).filter((d) => d < now && (now - d) / 3.6e6 < 16).sort((a, b) => b - a);
     let sleep = null;
-    if (prev && prev.bed_at) { const h = (now - new Date(prev.bed_at)) / 3.6e6; if (h > 0 && h < 16) sleep = Math.round(h * 10) / 10; }
+    if (beds.length) sleep = Math.round(((now - beds[0]) / 3.6e6) * 10) / 10;
     D.putState(date, { wake_at: now.toISOString(), ...(sleep != null ? { sleep_hours: sleep } : {}) });
     return sleep;
   };

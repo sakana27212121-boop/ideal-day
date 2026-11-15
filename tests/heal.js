@@ -64,17 +64,29 @@ async function scenario(b, name, fn) {
       const src = await sources(p, '2026-11-23');
       ok(src.length === 5 && src.every((s) => s === 'template'), '翌週の月曜からは週の型で作られる');
     });
-    await scenario(b, '0〜4時の表示と、4時の切り替わり', async (p) => {
+    await scenario(b, '0時の切り替わりと、0時を過ぎた就寝の睡眠時間', async (p) => {
       await p.clock.install({ time: new Date('2026-11-15T21:00:00+09:00') });
       await p.goto(BASE); await p.waitForTimeout(300); await p.click('[data-act="saveIdeal"]'); await p.waitForTimeout(100);
       await addTemplate(p, '2026-11-15T12:00:00Z');
-      await p.clock.fastForward('06:00:00'); await p.waitForTimeout(1500); // 3:00
-      const t = await p.locator('#app').innerText();
-      ok(t.includes('0時〜4時は前日（11/15）として記録します') && t.includes('11/16の旅程は4時から表示されます'), '0〜4時は、前日扱いであることと切り替わりの時刻を表示');
-      await p.clock.fastForward('01:01:00'); await p.waitForTimeout(1500); // 4:01（開いたまま日付が変わる）
+      await p.clock.fastForward('02:58:00'); await p.waitForTimeout(1500); // 23:58
+      ok((await p.locator('.topbar .day').innerText()).includes('11月15日') && !(await p.locator('#app').innerText()).includes('前日'), '23:58：まだ11月15日（前日扱いの案内は出ない）');
+      await p.clock.fastForward('03:00'); await p.waitForTimeout(1500); // 0:01（開いたまま日付が変わる）
       const src = await sources(p, '2026-11-16');
-      ok(src.length === 5 && src.every((s) => s === 'template'), `開いたまま4時を過ぎると、月曜の時間割が週の型で作られる（${src.length}件）`);
+      ok(src.length === 5 && src.every((s) => s === 'template'), `開いたまま0時を過ぎると、月曜の時間割が週の型で作られる（${src.length}件）`);
       ok((await p.locator('.topbar .day').innerText()).includes('11月16日'), '画面の日付が11月16日に切り替わる');
+      await p.click('[data-act="bed"]'); // 0:01に就寝 → 11/16の記録に入る
+      await p.clock.fastForward('07:29:00'); await p.waitForTimeout(500); // 7:30
+      await p.click('[data-act="wake"]');
+      const st = await p.evaluate(() => window.__app.D.state());
+      ok(st.sleep_hours === 7.5, `0時を過ぎてから「寝る」を押しても、睡眠時間（寝床にいた時間）を計算できる（${st.sleep_hours}時間）`);
+    });
+    await scenario(b, '23時に就寝した場合の睡眠時間', async (p) => {
+      await p.clock.install({ time: new Date('2026-11-15T23:00:00+09:00') });
+      await p.goto(BASE); await p.waitForTimeout(300); await p.click('[data-act="saveIdeal"]'); await p.waitForTimeout(100);
+      await p.click('[data-act="bed"]');
+      await p.clock.fastForward('08:30:00'); await p.reload(); await p.waitForTimeout(400); // 7:30
+      await p.click('[data-act="wake"]');
+      ok((await p.evaluate(() => window.__app.D.state().sleep_hours)) === 8.5, '前日の23時に「寝る」→7:30に「起きた」で8.5時間');
     });
   } catch (e) { failures++; console.error(e); }
   await b.close(); server.kill();

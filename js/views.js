@@ -1,5 +1,5 @@
 // 画面の描画（HTML文字列を返すだけ。操作は app.js が data-act で受け取る）
-import { esc as E, fmt, dur, md, WD, toMin, logicalDate, addDays } from './util.js';
+import { esc as E, fmt, dur, md, WD, toMin, logicalDate, addDays, DAY_START_HOUR } from './util.js';
 
 // 呼び名：ゲーム風は主要部分だけ。設定でふつうの呼び名に切り替えられる。新しい項目はふつうの名称で追加する
 const TERMS = {
@@ -88,7 +88,7 @@ function questWin(D) {
 
 export function routeWin(D, opts = {}) {
   const tl = D.timeline(), h = new Date().getHours(), td = D.today();
-  const late = h < 4 ? `<p class="meta read" style="margin-top:0">0時〜4時は前日（${md(td)}）として記録します。${md(addDays(td, 1))}の旅程は4時から表示されます。</p>` : '';
+  const late = h < DAY_START_HOUR ? `<p class="meta read" style="margin-top:0">0時〜${DAY_START_HOUR}時は前日（${md(td)}）として記録します。${md(addDays(td, 1))}の旅程は${DAY_START_HOUR}時から表示されます。</p>` : '';
   return `<section class="win full"><span class="tag">${T('route')}</span>${late}
     ${tl.length ? `<ol class="route">${tl.map((b) => `<li class="${b.state}" style="--c:${KC[b.kind] || '#5d6f68'}"><span class="t">${fmt(b.start_min)}</span><span class="node"></span>
       <button class="lbl" data-act="sheet" data-v="block" data-id="${b.id}" aria-label="${E(b.label)}（${fmt(b.start_min)}から${dur(b.dur)}）を編集">${E(b.label)}${b.fixed ? '<span class="fixed">固定</span>' : ''}<span class="dur">${dur(b.dur)}</span></button>

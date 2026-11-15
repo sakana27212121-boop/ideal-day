@@ -32,7 +32,7 @@ PC・iPhone（ホーム画面に追加）で使うWebアプリ。データはSup
 | `vendor/` | Supabaseライブラリ、書体（DotGothic16・BIZ UDPGothic、OFL） |
 | `supabase/migrations/` | データベースの定義（全表に本人のみ読み書きできるRLS） |
 
-日付は朝4時で切り替わる（夜ふかしの作業は前日の扱い）。
+日付は0時で切り替わる（0時を過ぎた記録は翌日の扱い。睡眠時間は前日・当日の「寝る」から直前のものを使って計算）。
 
 ## 検証
 Playwright と Chromium が入った環境で：
