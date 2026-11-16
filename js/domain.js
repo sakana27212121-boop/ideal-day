@@ -212,15 +212,18 @@ export function createDomain(db) {
   D.dayTypeOf = (date = D.today()) => { const st = D.state(date); return st && st.template_wd != null ? st.template_wd : weekday(date); };
   // 型の切り替えは1日1回まで（本人の方針：気軽に変えられると続かない）
   D.switchedToday = (date = D.today()) => { const st = D.state(date); return !!(st && st.template_switched_at); };
-  D.switchDay = (wd) => {
-    const date = D.today(), n = nowMin(), bl = D.blocks(date);
-    if (D.switchedToday(date)) return false;
+  // その日の予定を、選んだ型に置き換える（その日全体。終わった予定と、作業記録が結びついた予定は残す）
+  D.applyDayType = (date, wd) => {
     const used = new Set(db.all('work_sessions').map((x) => x.block_id));
-    // 終わった予定・作業の記録がある予定・今から前の予定は残し、これから先の予定だけを選んだ型に置き換える
-    bl.filter((b) => b.status === 'planned' && !used.has(b.id) && b.start_min + b.dur > n).forEach((b) => db.remove('schedule_blocks', b.id, { batch: true }));
+    D.blocks(date).filter((b) => b.status === 'planned' && !used.has(b.id)).forEach((b) => db.remove('schedule_blocks', b.id, { batch: true }));
     db.all('recurring_events').filter((e) => e.active !== false && (e.weekdays || []).includes(wd)).sort((a, b) => a.start_min - b.start_min)
-      .filter((e) => e.start_min + e.dur > n).forEach((e) => { const kind = e.kind || 'fixed';
+      .forEach((e) => { const kind = e.kind || 'fixed';
         db.put('schedule_blocks', { id: detId(db.uid || 'local', date, 'sw' + wd + e.id), date, start_min: e.start_min, dur: e.dur, kind, title: e.title, task_id: e.task_id || null, fixed: kind === 'fixed', status: 'planned', source: 'template' }, { batch: true }); });
+  };
+  D.switchDay = (wd) => {
+    const date = D.today();
+    if (D.switchedToday(date)) return false;
+    D.applyDayType(date, wd);
     const st = D.state(date);
     db.put('daily_states', { ...(st || { id: uid(), date, rest_count: 0 }), template_wd: wd, template_switched_at: new Date().toISOString() }, { batch: true });
     db.commit(); return true;

@@ -340,7 +340,7 @@ function blockInfo(D, b) {
 export function daySheet(D) {
   const cur = D.dayTypeOf(), types = D.dayTypes();
   return `<div class="overlay" role="dialog" aria-modal="true" aria-label="今日の型を変える"><div class="win"><span class="tag">今日の型を変える</span>
-    <p class="read" style="margin-top:0">予定は1つずつではなく、型ごと切り替えます。今から後の予定が、選んだ型の予定に置き換わります。終わった予定と作業の記録は残ります。</p>
+    <p class="read" style="margin-top:0">予定は1つずつではなく、型ごと切り替えます。今日の予定が、選んだ型の予定に置き換わります（終わった予定と、作業を記録した予定は残ります）。</p>
     <p class="err read">切り替えは1日1回だけです。切り替えたあとは、その日のうちに元に戻したり別の型に変えたりできません。</p>
     <div class="menu" style="grid-template-columns:1fr">${types.map((t) => `<label><input type="radio" name="daytype" value="${t.wd}" ${t.wd === cur ? 'checked' : ''}>${t.label}<span class="meta" style="margin-left:auto">${E(t.desc)}${t.wd === cur ? '（今の型）' : ''}</span></label>`).join('')}</div>
     <div class="row"><button class="btn ghost" data-act="close">やめる</button><button class="btn go" data-act="switchDay">この型に切り替える</button></div></div></div>`;

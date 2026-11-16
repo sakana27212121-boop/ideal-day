@@ -80,6 +80,19 @@ async function scenario(b, name, fn) {
       const st = await p.evaluate(() => window.__app.D.state());
       ok(st.sleep_hours === 7.5, `0時を過ぎてから「寝る」を押しても、睡眠時間（寝床にいた時間）を計算できる（${st.sleep_hours}時間）`);
     });
+    await scenario(b, '夜遅く（23:42）に型を切り替えても、その日の時間割に反映される', async (p) => {
+      await p.clock.install({ time: new Date('2026-11-16T09:00:00+09:00') });
+      await p.goto(BASE); await p.waitForTimeout(300); await p.click('[data-act="saveIdeal"]'); await p.waitForTimeout(100);
+      await addTemplate(p, '2026-11-15T12:00:00Z'); // 月曜の型
+      await p.evaluate(() => { const { db } = window.__app; const id = () => crypto.randomUUID(); // 土曜の型（固定なし）
+        [['昼食（土）', 'meal', 720, 45], ['自由時間（土）', 'free', 840, 240]].forEach(([title, kind, s, d]) => db.put('recurring_events', { id: id(), title, kind, weekdays: [6], start_min: s, dur: d, active: true }, { batch: true })); db.commit(); });
+      await p.reload(); await p.waitForTimeout(400);
+      await p.evaluate(() => { const D = window.__app.D; window.__app.db.data.schedule_blocks = Object.fromEntries(Object.entries(window.__app.db.data.schedule_blocks).filter(([, b]) => b.date !== D.today())); D.ensureDay(); });
+      await p.clock.fastForward('14:42:00'); await p.waitForTimeout(500); // 23:42
+      const r = await p.evaluate(() => window.__app.D.switchDay(6));
+      const bl = await p.evaluate(() => window.__app.D.blocks().map((x) => window.__app.D.blockLabel(x)));
+      ok(r === true && bl.includes('昼食（土）') && bl.includes('自由時間（土）') && !bl.includes('大学（架空）'), `23:42の切り替えでも、その日の時間割が土曜の型になる（${bl.join('・')}）`);
+    });
     await scenario(b, '23時に就寝した場合の睡眠時間', async (p) => {
       await p.clock.install({ time: new Date('2026-11-15T23:00:00+09:00') });
       await p.goto(BASE); await p.waitForTimeout(300); await p.click('[data-act="saveIdeal"]'); await p.waitForTimeout(100);

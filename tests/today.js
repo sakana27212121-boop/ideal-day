@@ -60,7 +60,7 @@ const lbl = (p, text) => p.locator('.route .lbl', { hasText: text });
       ok(t.includes('月曜の型') && t.includes('固定：大学（架空）') && t.includes('土曜の型') && t.includes('固定予定なし'), '型の一覧に、各曜日の型と固定予定の有無が出る');
       await p.locator('input[name="daytype"][value="6"]').check({ force: true }); await p.click('[data-act="switchDay"]'); await p.waitForTimeout(150);
       const after = await p.evaluate(() => window.__app.D.blocks().map((x) => [x.start_min, window.__app.D.blockLabel(x), x.status]));
-      ok(!after.some((x) => x[1] === '大学（架空）') && after.some((x) => x[0] === 900 && x[1] === '定例：深い作業') && after.some((x) => x[1] === '自由時間'), `今から後が土曜の型に置き換わる（大学がなくなり、15:00 深い作業・自由時間が入る）`);
+      ok(!after.some((x) => x[1] === '大学（架空）') && after.some((x) => x[0] === 900 && x[1] === '定例：深い作業') && after.some((x) => x[1] === '自由時間') && after.some((x) => x[0] === 720 && x[1] === '昼食' && x[2] === 'planned'), `その日全体が土曜の型に置き換わる（大学がなくなり、15:00 深い作業・自由時間が入る。過ぎた時間の予定も土曜の型）`);
       ok(after.some((x) => x[0] === 600 && x[2] === 'done') && after.some((x) => x[0] === 780 && x[1] === '移動'), '終わった作業と、作業を記録した移動の予定は残る');
       ok((await p.evaluate(() => window.__app.db.all('work_sessions').length)) === 2, '作業の記録は消えない');
       ok((await p.locator('.route + .row').innerText()).includes('土曜の型で進行中'), '今の型が表示される');
@@ -69,7 +69,7 @@ const lbl = (p, text) => p.locator('.route .lbl', { hasText: text });
       ok(again.r === false && again.same, '2回目の切り替えは内部でも拒否され、時間割は変わらない');
       // 5) 過去の予定の時間にした作業を書く（予定はそのまま）
       await lbl(p, '昼食').click(); await p.click('[data-act="logBlock"]');
-      ok((await p.inputValue('#l-start')) === '12:00' && (await p.inputValue('#l-end')) === '12:40', 'その予定の時刻が入った状態で開く');
+      ok((await p.inputValue('#l-start')) === '12:00' && (await p.inputValue('#l-end')) === '12:45', 'その予定（土曜の型の昼食 12:00〜12:45）の時刻が入った状態で開く');
       await p.fill('#l-start', '12:10'); await p.fill('#l-end', '12:35');
       await p.fill('#l-outcome', 'メールを5件返信した'); await p.locator('input[name="l-value"][value="3"]').check({ force: true }); await p.click('[data-act="logPast"]'); await p.waitForTimeout(150);
       ok((await p.evaluate(() => window.__app.db.all('work_sessions').length)) === 3, '過去の予定の時間にした作業も記録できる');
@@ -82,7 +82,8 @@ const lbl = (p, text) => p.locator('.route .lbl', { hasText: text });
       const ct = await p.inputValue('#c-text');
       ok(ct.includes('やったこと：電車で英単語アプリを30語進めた') && ct.includes('見合い4') && ct.includes('移動の時間に作業') && ct.includes('## 型の切り替え') && ct.includes('土曜の型') && ct.includes('かけた時間に対して'), '相談用の書き出しに、やったこと・見合い・移動中の作業・型の切り替え・評価の依頼が出る');
       ok((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, '横にはみ出さない');
-      await p.clock.fastForward('10:00:00'); await p.waitForTimeout(1500); // 翌日（火曜）0:20
+      await p.clock.fastForward('09:22:00'); await p.waitForTimeout(1500); // 23:42：夜遅くの切り替えでも、その日の時間割に反映される（別シナリオで確認）
+      await p.clock.fastForward('00:38:00'); await p.waitForTimeout(1500); // 翌日（火曜）0:20
       await p.locator('[data-act="tab"][data-v="home"]:visible').first().click();
       ok((await p.evaluate(() => window.__app.D.switchedToday())) === false, '翌日はまた1回切り替えられる');
       ok(errs.length === 0, 'ブラウザのエラーなし' + (errs.length ? '：' + errs.join(' / ') : ''));
