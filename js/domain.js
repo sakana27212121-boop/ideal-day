@@ -210,8 +210,11 @@ export function createDomain(db) {
     const fx = [...new Set(ev.filter((e) => (e.kind || 'fixed') === 'fixed' && !/移動/.test(e.title)).map((e) => e.title))];
     return { wd, label: `${'日月火水木金土'[wd]}曜の型`, desc: fx.length ? `固定：${fx.join('・')}` : '固定予定なし（在宅・休日向け）' }; }).filter(Boolean);
   D.dayTypeOf = (date = D.today()) => { const st = D.state(date); return st && st.template_wd != null ? st.template_wd : weekday(date); };
+  // 型の切り替えは1日1回まで（本人の方針：気軽に変えられると続かない）
+  D.switchedToday = (date = D.today()) => { const st = D.state(date); return !!(st && st.template_switched_at); };
   D.switchDay = (wd) => {
     const date = D.today(), n = nowMin(), bl = D.blocks(date);
+    if (D.switchedToday(date)) return false;
     const used = new Set(db.all('work_sessions').map((x) => x.block_id));
     // 終わった予定・作業の記録がある予定・今から前の予定は残し、これから先の予定だけを選んだ型に置き換える
     bl.filter((b) => b.status === 'planned' && !used.has(b.id) && b.start_min + b.dur > n).forEach((b) => db.remove('schedule_blocks', b.id, { batch: true }));
@@ -220,7 +223,7 @@ export function createDomain(db) {
         db.put('schedule_blocks', { id: detId(db.uid || 'local', date, 'sw' + wd + e.id), date, start_min: e.start_min, dur: e.dur, kind, title: e.title, task_id: e.task_id || null, fixed: kind === 'fixed', status: 'planned', source: 'template' }, { batch: true }); });
     const st = D.state(date);
     db.put('daily_states', { ...(st || { id: uid(), date, rest_count: 0 }), template_wd: wd, template_switched_at: new Date().toISOString() }, { batch: true });
-    db.commit();
+    db.commit(); return true;
   };
   // 成果の書き方があいまいか（具体的に書くよう一度だけ促す。記録は妨げない）
   D.isVague = (t) => { const x = (t || '').trim(); return x.length < 6 || (x.length < 12 && !/[0-9０-９]/.test(x)) || /^(作業|いろいろ|色々|進めた|やった|頑張った|確認|対応)(した|しました)?[。！!]*$/.test(x) || /^(.{0,6})(を)?(進めた|やった|作業した)[。]*$/.test(x); };

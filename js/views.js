@@ -94,7 +94,7 @@ export function routeWin(D, opts = {}) {
       <button class="lbl" data-act="sheet" data-v="block" data-id="${b.id}" aria-label="${E(b.label)}（${fmt(b.start_min)}から${dur(b.dur)}）${tday ? 'の詳細' : 'を編集'}">${E(b.label)}${b.fixed ? '<span class="fixed">固定</span>' : ''}<span class="dur">${dur(b.dur)}</span>${b.state === 'skipped' ? '<span class="fixed" style="color:var(--dim);border-color:var(--dim)">中止</span>' : ''}</button>
       ${!tday && !b.fixed && b.status === 'planned' && b.state !== 'active' ? `<span class="mv"><button data-act="shift" data-id="${b.id}" data-n="-15" aria-label="${E(b.label)}を15分早める">−15</button><button data-act="shift" data-id="${b.id}" data-n="15" aria-label="${E(b.label)}を15分遅らせる">+15</button></span>` : '<span></span>'}</li>`).join('')}</ol>`
     : `<p class="meta read">今日の予定はまだありません。</p>`}
-    ${tday ? `<div class="row"><span class="meta" style="margin-right:auto">${E(D.dayTypes().find((x) => x.wd === D.dayTypeOf())?.label || '')}で進行中</span><button class="btn small" data-act="sheet" data-v="day">今日の型を変える</button></div>`
+    ${tday ? `<div class="row"><span class="meta" style="margin-right:auto">${E(D.dayTypes().find((x) => x.wd === D.dayTypeOf())?.label || '')}で進行中</span>${D.switchedToday() ? '<span class="meta">今日の型は変更済み（1日1回まで）</span>' : '<button class="btn small" data-act="sheet" data-v="day">今日の型を変える</button>'}</div>`
       : `<div class="row"><button class="btn small ghost" data-act="replan">空き時間にタスクを入れ直す</button><button class="btn small" data-act="sheet" data-v="block">予定を追加</button></div>`}
   </section>`;
 }
@@ -341,6 +341,7 @@ export function daySheet(D) {
   const cur = D.dayTypeOf(), types = D.dayTypes();
   return `<div class="overlay" role="dialog" aria-modal="true" aria-label="今日の型を変える"><div class="win"><span class="tag">今日の型を変える</span>
     <p class="read" style="margin-top:0">予定は1つずつではなく、型ごと切り替えます。今から後の予定が、選んだ型の予定に置き換わります。終わった予定と作業の記録は残ります。</p>
+    <p class="err read">切り替えは1日1回だけです。切り替えたあとは、その日のうちに元に戻したり別の型に変えたりできません。</p>
     <div class="menu" style="grid-template-columns:1fr">${types.map((t) => `<label><input type="radio" name="daytype" value="${t.wd}" ${t.wd === cur ? 'checked' : ''}>${t.label}<span class="meta" style="margin-left:auto">${E(t.desc)}${t.wd === cur ? '（今の型）' : ''}</span></label>`).join('')}</div>
     <div class="row"><button class="btn ghost" data-act="close">やめる</button><button class="btn go" data-act="switchDay">この型に切り替える</button></div></div></div>`;
 }

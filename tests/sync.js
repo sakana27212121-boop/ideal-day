@@ -71,6 +71,9 @@ const text = (p) => p.locator('#app').innerText();
     await sync(phone); await sync(pc);
     ok((await pc.evaluate(() => (window.__app.D.state() || {}).fulfill)) === 4, 'PC：iPhoneで記録した充実度が反映される');
 
+    await phone.evaluate(() => window.__app.D.switchDay(6)); await sync(phone); await sync(pc);
+    ok((await pc.evaluate(() => window.__app.D.switchedToday())) === true && (await pc.evaluate(() => window.__app.D.switchDay(1))) === false, 'PC：iPhoneで型を切り替えた日は、PCからも切り替えられない（1日1回）');
+
     console.log('\n■ オフライン中の記録');
     await phoneCtx.setOffline(true);
     await phone.click('[data-act="scale"][data-f="energy"][data-n="3"]');

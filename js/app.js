@@ -112,7 +112,7 @@ window.addEventListener('hashchange', () => { const h = location.hash.slice(1); 
 // ---------- 操作 ----------
 const acts = {
   tab: (d) => { V.tab = d.v; V.sheet = null; V.mini = false; V.events = null; try { history.replaceState(null, '', '#' + d.v); } catch (e) { /* 一部の環境では不可 */ } render(); window.scrollTo(0, 0); },
-  sheet: (d) => { V.sheet = d.v; V.id = d.id || null; V.logBlock = null; V.vagueOk = false; render(); const f = root.querySelector('.overlay input, .overlay select, .overlay button'); if (f) f.focus(); },
+  sheet: (d) => { if (d.v === 'day' && D.switchedToday()) { toast('今日はすでに型を切り替えています（1日1回まで）'); return; } V.sheet = d.v; V.id = d.id || null; V.logBlock = null; V.vagueOk = false; render(); const f = root.querySelector('.overlay input, .overlay select, .overlay button'); if (f) f.focus(); },
   close: () => { V.sheet = null; render(); },
   mini: () => { V.mini = !V.mini; render(); },
   'open-start': (d) => { V.sheet = 'start'; V.id = d.id; V.block = d.block || null; render(); },
@@ -156,7 +156,9 @@ const acts = {
     const ids = [d.id, ...[...root.querySelectorAll('[data-skip]')].filter((e) => e.checked).map((e) => e.dataset.skip)];
     D.skipBlocks(ids); V.sheet = null; sfx('cancel'); toast(`${ids.length}件の予定を中止にしました（記録として残ります）`); render();
   },
-  switchDay: () => { const wd = +radio('daytype'); if (Number.isNaN(wd)) return; D.switchDay(wd); V.sheet = null; sfx('save'); toast(`今日の残りを${'日月火水木金土'[wd]}曜の型に切り替えました`); render(); },
+  switchDay: () => { const wd = +radio('daytype'); if (Number.isNaN(wd)) return; const okd = D.switchDay(wd); V.sheet = null;
+    if (!okd) { toast('今日はすでに型を切り替えています（1日1回まで）'); render(); return; }
+    sfx('save'); toast(`今日の残りを${'日月火水木金土'[wd]}曜の型に切り替えました（今日はこれ以上変えられません）`); render(); },
   startHere: (d) => { const t = val('bh-task'); if (!t) return; const s = D.start(t, d.id); V.sheet = null; V.mini = false; if (s) { sfx('start'); toast('開始時刻を記録しました（予定はそのまま）'); } render(); },
   logBlock: (d) => { V.sheet = 'log'; V.logBlock = d.id; V.id = null; V.vagueOk = false; render(); },
   unskipBlock: (d) => { D.unskipBlock(d.id); V.sheet = null; toast('中止を取り消しました'); render(); },

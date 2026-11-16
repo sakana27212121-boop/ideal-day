@@ -64,6 +64,9 @@ const lbl = (p, text) => p.locator('.route .lbl', { hasText: text });
       ok(after.some((x) => x[0] === 600 && x[2] === 'done') && after.some((x) => x[0] === 780 && x[1] === '移動'), '終わった作業と、作業を記録した移動の予定は残る');
       ok((await p.evaluate(() => window.__app.db.all('work_sessions').length)) === 2, '作業の記録は消えない');
       ok((await p.locator('.route + .row').innerText()).includes('土曜の型で進行中'), '今の型が表示される');
+      ok((await p.locator('[data-act="sheet"][data-v="day"]').count()) === 0 && (await p.locator('.route + .row').innerText()).includes('変更済み（1日1回まで）'), '切り替えたあとは「今日の型を変える」が出ない（1日1回まで）');
+      const again = await p.evaluate(() => { const D = window.__app.D; const n = D.blocks().length; const r = D.switchDay(1); return { r, same: D.blocks().length === n }; });
+      ok(again.r === false && again.same, '2回目の切り替えは内部でも拒否され、時間割は変わらない');
       // 5) 過去の予定の時間にした作業を書く（予定はそのまま）
       await lbl(p, '昼食').click(); await p.click('[data-act="logBlock"]');
       ok((await p.inputValue('#l-start')) === '12:00' && (await p.inputValue('#l-end')) === '12:40', 'その予定の時刻が入った状態で開く');
@@ -79,6 +82,9 @@ const lbl = (p, text) => p.locator('.route .lbl', { hasText: text });
       const ct = await p.inputValue('#c-text');
       ok(ct.includes('やったこと：電車で英単語アプリを30語進めた') && ct.includes('見合い4') && ct.includes('移動の時間に作業') && ct.includes('## 型の切り替え') && ct.includes('土曜の型') && ct.includes('かけた時間に対して'), '相談用の書き出しに、やったこと・見合い・移動中の作業・型の切り替え・評価の依頼が出る');
       ok((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, '横にはみ出さない');
+      await p.clock.fastForward('10:00:00'); await p.waitForTimeout(1500); // 翌日（火曜）0:20
+      await p.locator('[data-act="tab"][data-v="home"]:visible').first().click();
+      ok((await p.evaluate(() => window.__app.D.switchedToday())) === false, '翌日はまた1回切り替えられる');
       ok(errs.length === 0, 'ブラウザのエラーなし' + (errs.length ? '：' + errs.join(' / ') : ''));
       await c.close();
     }
