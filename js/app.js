@@ -158,7 +158,7 @@ const acts = {
   },
   switchDay: () => { const wd = +radio('daytype'); if (Number.isNaN(wd)) return; const okd = D.switchDay(wd); V.sheet = null;
     if (!okd) { toast('今日はすでに型を切り替えています（1日1回まで）'); render(); return; }
-    sfx('save'); toast(`今日を${'日月火水木金土'[wd]}曜の型に切り替えました（今日はこれ以上変えられません）`); render(); },
+    sfx('save'); toast(`今日を${D.dayTypeName(wd)}に切り替えました（今日はこれ以上変えられません）`); render(); },
   startHere: (d) => { const t = val('bh-task'); if (!t) return; const s = D.start(t, d.id); V.sheet = null; V.mini = false; if (s) { sfx('start'); toast('開始時刻を記録しました（予定はそのまま）'); } render(); },
   logBlock: (d) => { V.sheet = 'log'; V.logBlock = d.id; V.id = null; V.vagueOk = false; render(); },
   unskipBlock: (d) => { D.unskipBlock(d.id); V.sheet = null; toast('中止を取り消しました'); render(); },

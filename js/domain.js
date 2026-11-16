@@ -205,10 +205,13 @@ export function createDomain(db) {
   };
   // ---------- 型の切り替え（予定は1つずつではなく、型ごと変える） ----------
   D.isTemplateDay = (date = D.today()) => D.blocks(date).some((b) => b.source === 'template') || (!D.blocks(date).length && D.hasTemplate(date));
-  D.dayTypes = () => [1, 2, 3, 4, 5, 6, 0].map((wd) => { const ev = db.all('recurring_events').filter((e) => e.active !== false && (e.weekdays || []).includes(wd));
+  // 型の名前：0〜6は曜日の型、7以降は曜日に結びつかない型（名前は設定 prefs.dayTypeNames に保存）
+  D.dayTypeName = (wd) => (wd >= 0 && wd <= 6 ? `${'日月火水木金土'[wd]}曜の型` : ((D.prefs().dayTypeNames || {})[wd] || `型${wd}`));
+  D.dayTypes = () => { const extra = [...new Set(db.all('recurring_events').filter((e) => e.active !== false).flatMap((e) => e.weekdays || []).filter((wd) => wd >= 7))].sort((a, b) => a - b);
+    return [1, 2, 3, 4, 5, 6, 0, ...extra].map((wd) => { const ev = db.all('recurring_events').filter((e) => e.active !== false && (e.weekdays || []).includes(wd));
     if (!ev.some((e) => (e.kind || 'fixed') !== 'fixed')) return null;
     const fx = [...new Set(ev.filter((e) => (e.kind || 'fixed') === 'fixed' && !/移動/.test(e.title)).map((e) => e.title))];
-    return { wd, label: `${'日月火水木金土'[wd]}曜の型`, desc: fx.length ? `固定：${fx.join('・')}` : '固定予定なし（在宅・休日向け）' }; }).filter(Boolean);
+    return { wd, label: D.dayTypeName(wd), desc: fx.length ? `固定：${fx.join('・')}` : wd >= 7 ? '固定予定なし' : '固定予定なし（在宅・休日向け）' }; }).filter(Boolean); };
   D.dayTypeOf = (date = D.today()) => { const st = D.state(date); return st && st.template_wd != null ? st.template_wd : weekday(date); };
   // 型の切り替えは1日1回まで（本人の方針：気軽に変えられると続かない）
   D.switchedToday = (date = D.today()) => { const st = D.state(date); return !!(st && st.template_switched_at); };
@@ -441,7 +444,7 @@ export function createDomain(db) {
     if ((I.goals || []).length) L.push(`- 目標：${I.goals.join('／')}`);
     if ((I.priorities || []).length) L.push(`- 大切にしたいこと：${I.priorities.join('／')}`);
     const fx = db.all('recurring_events').filter((e) => e.active !== false);
-    if (fx.length) L.push(`- 毎週の固定予定：${fx.map((e) => `${e.title}（${(e.weekdays || []).map((d) => '日月火水木金土'[d]).join('')} ${fmt(e.start_min)}〜${fmt(e.start_min + e.dur)}）`).join('、')}`);
+    if (fx.length) L.push(`- 毎週の固定予定：${fx.map((e) => `${e.title}（${(e.weekdays || []).filter((d) => d <= 6).map((d) => '日月火水木金土'[d]).join('')} ${fmt(e.start_min)}〜${fmt(e.start_min + e.dur)}）`).join('、')}`);
     L.push('', '## 日々の記録', '（「−」は未記録。食事は食べた数で、「未2」は2食分が未記録。運動は ◯＝した、×＝しなかった）', '| 日付 | 起床 | 睡眠 | 食事 | 運動 | 元気 | 充実度 | 作業時間 | 集中度 |' + (free ? ' ひとこと |' : ''), '|---|---|---|---|---|---|---|---|---|' + (free ? '---|' : ''));
     a.rows.forEach((r) => { const st = D.state(r.date) || {}; L.push(`| ${md(r.date)} | ${hm(r.wake)} | ${r.sleep ?? '−'} | ${D.mealText(r.meal)} | ${r.exercise === true ? '◯' : r.exercise === false ? '×' : '−'} | ${r.energy ?? '−'} | ${r.fulfill ?? '−'} | ${r.workMin ? dur(r.workMin) : '−'} | ${r.focus ?? '−'} |` + (free ? ` ${(st.note || '−').replace(/[|\n]/g, ' ')} |` : '')); });
     const custom = D.habits().filter((h) => h.kind === 'custom');
@@ -457,7 +460,7 @@ export function createDomain(db) {
     const sk = db.all('schedule_blocks').filter((x) => x.status === 'skipped' && a.rows.some((r) => r.date === x.date)).sort((x, y) => (x.date + x.start_min).localeCompare(y.date + y.start_min));
     if (sk.length) L.push('', '## 中止した予定', ...sk.map((x) => `- ${md(x.date)} ${fmt(x.start_min)}〜${fmt(x.start_min + x.dur)} ${D.blockLabel(x)}`));
     const sw = a.rows.map((r) => D.state(r.date)).filter((x) => x && x.template_wd != null);
-    if (sw.length) L.push('', '## 型の切り替え', ...sw.map((x) => `- ${md(x.date)}：${'日月火水木金土'[weekday(x.date)]}曜 → ${'日月火水木金土'[x.template_wd]}曜の型（${x.template_switched_at ? fmt(tsMin(x.template_switched_at, x.date)) : ''}に変更）`));
+    if (sw.length) L.push('', '## 型の切り替え', ...sw.map((x) => `- ${md(x.date)}：${'日月火水木金土'[weekday(x.date)]}曜 → ${D.dayTypeName(x.template_wd)}（${x.template_switched_at ? fmt(tsMin(x.template_switched_at, x.date)) : ''}に変更）`));
     L.push('', '## 集計', `- 平均睡眠 ${a.sleep ?? '−'}時間、理想どおりの起床 ${a.wakeOk}/${a.wakeN}日、運動 ${a.exerciseDays}日（記録 ${a.exerciseKnown}日中）、平均充実度 ${a.fulfill ?? '−'}、作業 ${dur(a.workMin)}、完了タスク ${a.completed}件`,
       `- 時間帯別の集中度：午前 ${a.focusBy.am.avg ?? '−'}（${a.focusBy.am.n}回）／午後 ${a.focusBy.pm.avg ?? '−'}（${a.focusBy.pm.n}回）／夜 ${a.focusBy.night.avg ?? '−'}（${a.focusBy.night.n}回）`);
     const ex = D.experiments(); if (ex.length) { L.push('', '## 改善実験'); ex.forEach((e) => { const r = D.result(e.id); L.push(`- ${e.title}（${md(e.start_date)}から${e.days}日・${e.status === 'running' ? '実施中' : e.decision || '終了'}）${r ? '：' + r.summary : ''}`); }); }

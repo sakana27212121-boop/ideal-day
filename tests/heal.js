@@ -93,6 +93,24 @@ async function scenario(b, name, fn) {
       const bl = await p.evaluate(() => window.__app.D.blocks().map((x) => window.__app.D.blockLabel(x)));
       ok(r === true && bl.includes('昼食（土）') && bl.includes('自由時間（土）') && !bl.includes('大学（架空）'), `23:42の切り替えでも、その日の時間割が土曜の型になる（${bl.join('・')}）`);
     });
+    await scenario(b, '曜日に結びつかない型（例：在宅作業日）を選べる', async (p) => {
+      await p.clock.install({ time: new Date('2026-11-16T09:00:00+09:00') });
+      await p.goto(BASE); await p.waitForTimeout(300); await p.click('[data-act="saveIdeal"]'); await p.waitForTimeout(100);
+      await addTemplate(p, '2026-11-15T12:00:00Z'); // 月曜の型
+      await p.evaluate(() => { const { db, D } = window.__app; const id = () => crypto.randomUUID();
+        [['深い作業（在宅）', 'task', 540, 180], ['運動（在宅）', 'exercise', 930, 45]].forEach(([title, kind, s, d]) => db.put('recurring_events', { id: id(), title, kind, weekdays: [7], start_min: s, dur: d, active: true }, { batch: true }));
+        db.commit(); D.setPref('dayTypeNames', { 7: '在宅作業日（架空）' }); });
+      await p.evaluate(() => { const D = window.__app.D; window.__app.db.data.schedule_blocks = Object.fromEntries(Object.entries(window.__app.db.data.schedule_blocks).filter(([, x]) => x.date !== D.today())); D.ensureDay(); window.__app.render(); });
+      await p.click('[data-act="sheet"][data-v="day"]');
+      const t = await p.locator('.overlay').innerText();
+      ok(t.includes('在宅作業日（架空）') && t.includes('月曜の型'), '型の一覧に「在宅作業日」が曜日の型と並んで出る');
+      await p.locator('input[name="daytype"][value="7"]').check({ force: true }); await p.click('[data-act="switchDay"]'); await p.waitForTimeout(150);
+      const bl = await p.evaluate(() => window.__app.D.blocks().map((x) => x.title));
+      ok(bl.includes('深い作業（在宅）') && bl.includes('運動（在宅）') && !bl.includes('大学（架空）'), '切り替えると、その日が在宅作業日の型になる');
+      ok((await p.locator('.route + .row').innerText()).includes('在宅作業日（架空）で進行中'), '「在宅作業日で進行中」と表示');
+      ok((await p.evaluate(() => window.__app.D.consultText(7, true))).includes('月曜 → 在宅作業日（架空）'), '相談用の書き出しに型の名前が出る');
+      ok((await p.evaluate(() => { const D = window.__app.D; const d = '2026-11-23'; D.ensureDay(d); return D.blocks(d).some((x) => x.title === '深い作業（在宅）'); })) === false, '在宅作業日の型は、ふだんの曜日の時間割には入らない');
+    });
     await scenario(b, '23時に就寝した場合の睡眠時間', async (p) => {
       await p.clock.install({ time: new Date('2026-11-15T23:00:00+09:00') });
       await p.goto(BASE); await p.waitForTimeout(300); await p.click('[data-act="saveIdeal"]'); await p.waitForTimeout(100);
