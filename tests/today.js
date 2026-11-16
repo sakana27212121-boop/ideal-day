@@ -81,8 +81,18 @@ const lbl = (p, text) => p.locator('.route .lbl', { hasText: text });
       await p.locator('[data-act="tab"][data-v="ai"]:visible').first().click();
       const ct = await p.inputValue('#c-text');
       ok(ct.includes('やったこと：電車で英単語アプリを30語進めた') && ct.includes('見合い4') && ct.includes('移動の時間に作業') && ct.includes('## 型の切り替え') && ct.includes('土曜の型') && ct.includes('かけた時間に対して'), '相談用の書き出しに、やったこと・見合い・移動中の作業・型の切り替え・評価の依頼が出る');
+      // 7) 予定外の時間（夜の自由時間）にタスク画面から作業を始めても、ほかの枠を「済」にしない
+      await p.clock.fastForward('04:40:00'); await p.waitForTimeout(400); // 19:00（土曜の型：自由時間）
+      const planned15 = await p.evaluate(() => window.__app.D.blocks().find((x) => x.start_min === 900).status);
+      await p.locator('[data-act="tab"][data-v="tasks"]:visible').first().click();
+      await p.locator('.item', { hasText: '定例：深い作業' }).locator('[data-act="open-start"]').first().click(); await p.click('[data-act="start"]');
+      await p.clock.fastForward('30:00');
+      await p.click('[data-act="open-end"][data-status="継続"]'); await p.fill('#f-outcome', '来週の授業資料の構成を3案作った'); await p.locator('input[name="f-value"][value="4"]').check({ force: true }); await p.click('[data-act="end"]'); await p.waitForTimeout(150);
+      const ex = await p.evaluate(() => { const D = window.__app.D; const s = window.__app.db.all('work_sessions').sort((a, b) => b.started_at.localeCompare(a.started_at))[0]; const b = window.__app.db.raw('schedule_blocks', s.block_id); return { host: D.blockLabel(b), hostStatus: b.status, b15: D.blocks().find((x) => x.start_min === 900).status }; });
+      ok(planned15 === 'planned' && ex.b15 === 'planned' && ex.host === '自由時間' && ex.hostStatus === 'planned', `予定外の作業は「自由時間」の時間の作業として記録され、15:00の作業枠は予定のまま（${ex.host}）`);
+      ok((await p.evaluate(() => window.__app.D.consultText(7, true))).includes('自由時間の時間に作業'), '相談用の書き出しで「自由時間の時間に作業」と分かる');
       ok((await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0, '横にはみ出さない');
-      await p.clock.fastForward('09:22:00'); await p.waitForTimeout(1500); // 23:42：夜遅くの切り替えでも、その日の時間割に反映される（別シナリオで確認）
+      await p.clock.fastForward('04:12:00'); await p.waitForTimeout(1500); // 23:42：夜遅くの切り替えでも、その日の時間割に反映される（別シナリオで確認）
       await p.clock.fastForward('00:38:00'); await p.waitForTimeout(1500); // 翌日（火曜）0:20
       await p.locator('[data-act="tab"][data-v="home"]:visible').first().click();
       ok((await p.evaluate(() => window.__app.D.switchedToday())) === false, '翌日はまた1回切り替えられる');

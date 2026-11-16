@@ -262,7 +262,10 @@ export function createDomain(db) {
     const t = D.task(taskId); if (!t) return null;
     const date = D.today();
     const n0 = nowMin();
-    let b = blockId ? db.get('schedule_blocks', blockId) : D.blocks(date).filter((x) => x.task_id === taskId && x.status === 'planned').sort((p, q) => Math.abs(p.start_min - n0) - Math.abs(q.start_min - n0))[0];
+    // そのタスクの予定の枠の時間内（開始30分前〜終了）に始めたときだけ、その枠に結びつける。
+    // 予定外の時間に始めた作業は、型の日ならその時刻の予定（自由時間など）の時間の作業として記録する（ほかの枠を「済」にしない）
+    let b = blockId ? db.get('schedule_blocks', blockId) : D.blocks(date).filter((x) => x.task_id === taskId && x.status === 'planned' && n0 >= x.start_min - 30 && n0 < x.start_min + x.dur).sort((p, q) => Math.abs(p.start_min - n0) - Math.abs(q.start_min - n0))[0];
+    if (!b && D.isTemplateDay(date)) b = D.blocks(date).find((x) => x.kind !== 'task' && x.status !== 'skipped' && n0 >= x.start_min && n0 < x.start_min + x.dur);
     if (!b) b = D.saveBlock({ date, start_min: Math.floor(nowMin() / 5) * 5, dur: D.predictMin(t), kind: 'task', task_id: taskId, source: 'user' });
     return db.put('work_sessions', { id: uid(), task_id: taskId, block_id: b.id, started_at: new Date().toISOString(), ended_at: null, paused_at: null, paused_ms: 0, memo: '' });
   };
