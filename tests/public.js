@@ -76,7 +76,7 @@ async function overflowAll(p) {
     await ph.click('[data-act="resume"]'); ok(!(await text(ph)).includes('一時停止中'), 'iPhone：再開できる');
     await ph.evaluate(() => { const s = window.__app.D.running(); window.__app.db.put('work_sessions', { id: s.id, started_at: new Date(Date.now() - 50 * 60000).toISOString() }); const b = window.__app.db.get('schedule_blocks', s.block_id); window.__app.db.put('schedule_blocks', { id: b.id, start_min: b.start_min - 50 }); }); // 50分前に開始したことにする
     await ph.click('[data-act="open-end"][data-status="継続"]');
-    await ph.fill('#f-next', '公開テスト：次はここから'); await ph.fill('#f-progress', '半分まで');
+    await ph.fill('#f-next', '公開テスト：次はここから'); await ph.fill('#f-outcome', '公開環境の確認項目を半分まで終えた'); await ph.locator('input[name="f-value"][value="3"]').check({ force: true });
     await ph.click('[data-act="end"]'); await ph.waitForTimeout(300);
     const s1 = await ph.evaluate(() => window.__app.db.all('work_sessions')[0]);
     ok(s1 && s1.ended_at && s1.minutes >= 49, `iPhone：終了で作業時間が記録される（${s1 && s1.minutes}分）`);

@@ -43,7 +43,7 @@ function render() {
       <div class="topbar"><span class="day">${+today.slice(5, 7)}月${+today.slice(8)}日（${WD[new Date(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8)).getDay()]}）</span>${UI.syncBadge(db)}</div>
       ${back}${page}
       <div class="foot">${V.user ? `<span>${V.user.email || ''}</span><button data-act="logout">ログアウト</button>` : '<span>この端末のみで動作中（検証用）</span>'}<button data-act="syncNow">今すぐ同期</button></div></main></div>`;
-    html += { start: UI.startSheet, task: UI.taskSheet, block: UI.blockSheet, sleep: UI.sleepSheet, log: UI.logSheet }[V.sheet]?.(D, V) || '';
+    html += { start: UI.startSheet, task: UI.taskSheet, block: UI.blockSheet, sleep: UI.sleepSheet, log: UI.logSheet, day: UI.daySheet }[V.sheet]?.(D, V) || '';
   }
   root.innerHTML = html;
   if (keepId) { const e = document.getElementById(keepId); if (e) { e.focus(); try { if (selStart != null) e.setSelectionRange(selStart, selStart); } catch (x) { /* 選択位置を持たない入力 */ } } }
@@ -112,7 +112,7 @@ window.addEventListener('hashchange', () => { const h = location.hash.slice(1); 
 // ---------- 操作 ----------
 const acts = {
   tab: (d) => { V.tab = d.v; V.sheet = null; V.mini = false; V.events = null; try { history.replaceState(null, '', '#' + d.v); } catch (e) { /* 一部の環境では不可 */ } render(); window.scrollTo(0, 0); },
-  sheet: (d) => { V.sheet = d.v; V.id = d.id || null; render(); const f = root.querySelector('.overlay input, .overlay select, .overlay button'); if (f) f.focus(); },
+  sheet: (d) => { V.sheet = d.v; V.id = d.id || null; V.logBlock = null; V.vagueOk = false; render(); const f = root.querySelector('.overlay input, .overlay select, .overlay button'); if (f) f.focus(); },
   close: () => { V.sheet = null; render(); },
   mini: () => { V.mini = !V.mini; render(); },
   'open-start': (d) => { V.sheet = 'start'; V.id = d.id; V.block = d.block || null; render(); },
@@ -121,7 +121,9 @@ const acts = {
   resume: () => { D.resume(); toast('再開しました'); },
   'open-end': (d) => { V.sheet = 'end'; V.status = d.status; render(); },
   end: () => {
-    const f = { status: radio('status') || V.status || '継続', focus: +radio('focus') || null, energy: +radio('energy') || null, progress: val('f-progress'), remaining: val('f-remaining'), next: val('f-next'), problem: val('f-problem') };
+    const run = D.running(), mins = run ? D.elapsedMs(run) / 60000 : 0;
+    const f = { status: radio('status') || V.status || '継続', focus: +radio('focus') || null, energy: +radio('energy') || null, remaining: val('f-remaining'), next: val('f-next'), problem: val('f-problem'), outcome: val('f-outcome'), value: +radio('f-value') || null };
+    if (!checkOutcome('f', f, mins)) return;
     V.sheet = null; V.mini = false; V.tab = 'home';
     const r = D.end(f); sfx(f.status === '完了' ? 'complete' : 'save');
     toast(f.status === '完了' ? 'タスクを完了にしました' : r && r.resched && r.resched.none ? '記録しました。今日は空きがないため、続きは明日の予定に入ります' : f.next ? '記録しました。次回はここから再開できます' : '記録しました');
@@ -154,11 +156,16 @@ const acts = {
     const ids = [d.id, ...[...root.querySelectorAll('[data-skip]')].filter((e) => e.checked).map((e) => e.dataset.skip)];
     D.skipBlocks(ids); V.sheet = null; sfx('cancel'); toast(`${ids.length}件の予定を中止にしました（記録として残ります）`); render();
   },
+  switchDay: () => { const wd = +radio('daytype'); if (Number.isNaN(wd)) return; D.switchDay(wd); V.sheet = null; sfx('save'); toast(`今日の残りを${'日月火水木金土'[wd]}曜の型に切り替えました`); render(); },
+  startHere: (d) => { const t = val('bh-task'); if (!t) return; const s = D.start(t, d.id); V.sheet = null; V.mini = false; if (s) { sfx('start'); toast('開始時刻を記録しました（予定はそのまま）'); } render(); },
+  logBlock: (d) => { V.sheet = 'log'; V.logBlock = d.id; V.id = null; V.vagueOk = false; render(); },
   unskipBlock: (d) => { D.unskipBlock(d.id); V.sheet = null; toast('中止を取り消しました'); render(); },
   logPast: () => {
     const radio2 = (n) => { const e = root.querySelector(`input[name="${n}"]:checked`); return e ? e.value : ''; };
-    const r = D.logPast({ taskId: val('l-task'), date: val('l-date'), startMin: toMin(val('l-start')), endMin: toMin(val('l-end')), status: radio2('l-status') || '継続',
-      focus: +radio2('l-focus') || null, energy: +radio2('l-energy') || null, next: val('l-next'), progress: val('l-progress') });
+    const f = { taskId: val('l-task'), date: val('l-date'), startMin: toMin(val('l-start')), endMin: toMin(val('l-end')), status: radio2('l-status') || '継続',
+      focus: +radio2('l-focus') || null, energy: +radio2('l-energy') || null, next: val('l-next'), outcome: val('l-outcome'), value: +radio2('l-value') || null, blockId: V.logBlock || null };
+    if (!checkOutcome('l', f, (f.endMin ?? 0) - (f.startMin ?? 0))) return;
+    const r = D.logPast(f);
     if (r.error) { const e = document.getElementById('l-err'); if (e) { e.textContent = r.error; e.hidden = false; } return; }
     V.sheet = null; sfx('save'); toast(`${r.minutes}分の作業を記録しました`); render();
   },
@@ -230,6 +237,15 @@ const acts = {
   logout: async () => { if (V.confirm !== 'logout') { V.confirm = 'logout'; toast('もう一度押すとログアウトします'); return; } V.confirm = null; await db.sync(); await client.auth.signOut(); V.user = null; localStorage.removeItem('ideal-day:lastUser'); render(); },
   syncNow: async () => { await db.sync(); toast(db.status.state === 'ok' ? '同期しました' : db.status.state === 'local' ? 'この端末のみのモードです' : '同期できませんでした。通信状態を確認してください'); },
 };
+// やったこと・見合いの確認（10分以上は必須。あいまいなら一度だけ促す）
+function checkOutcome(p, f, mins) {
+  const err = (id, show, msg) => { const e = document.getElementById(id); if (e) { e.hidden = !show; if (msg) e.textContent = msg; } };
+  if (mins >= 10) {
+    if (!f.outcome || !f.value) { err(p + '-vague', true, !f.outcome ? 'やったこと（何を・どこまで）を書いてください。10分以上の作業では必須です。' : 'かけた時間に見合う進み具合だったか、1〜5で選んでください。'); document.getElementById(p + '-outcome')?.focus(); return false; }
+    if (D.isVague(f.outcome) && !V.vagueOk) { V.vagueOk = true; err(p + '-vague', true, '少しあいまいです。何を・どこまで（数・ページ・問題数など）を書くと、あとで時間に見合ったか確かめやすくなります。このままでよければ、もう一度押すと記録します。'); return false; }
+  }
+  V.vagueOk = false; return true;
+}
 function readEvents() {
   const evs = V.events || D.fixedEvents();
   return evs.map((e, i) => {

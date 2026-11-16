@@ -48,6 +48,7 @@ const ok = (c, m) => { if (c) { passes++; console.log('  ✓ ' + m); } else { fa
       await p.click('[data-act="open-end"][data-status="継続"]');
       await p.locator('input[name="status"][value="完了"]').check({ force: true });
       await p.locator('input[name="focus"][value="4"]').check({ force: true }); await p.locator('input[name="energy"][value="3"]').check({ force: true });
+      await p.fill('#f-outcome', '作りたいアプリの機能を3つ書き出した'); await p.locator('input[name="f-value"][value="4"]').check({ force: true });
       await p.click('[data-act="end"]'); await p.waitForTimeout(150);
       const tk = await p.evaluate(() => window.__app.D.tasks().find((x) => x.title === '定例：考える時間'));
       ok(tk.status === 'open', '定例タスクは「完了」にしても次回に残る');
@@ -56,7 +57,7 @@ const ok = (c, m) => { if (c) { passes++; console.log('  ✓ ' + m); } else { fa
       ok(a.startGap === 5 && a.plan === 45 && a.minutes === 40 && a.focus === 4 && a.energy === 3, `予定と実績・開始のずれ・集中度・体調を記録（ずれ+${a.startGap}分、予定${a.plan}分、実績${a.minutes}分）`);
       // 2回目：深い作業も定例タスク
       await p.locator('.quest [data-act="open-start"]').click(); await p.click('[data-act="start"]'); await p.clock.fastForward('50:00');
-      await p.click('[data-act="open-end"][data-status="継続"]'); await p.fill('#f-next', '次は資料の確認から'); await p.click('[data-act="end"]'); await p.waitForTimeout(150);
+      await p.click('[data-act="open-end"][data-status="継続"]'); await p.fill('#f-next', '次は資料の確認から'); await p.fill('#f-outcome', '企画書の1〜4ページの数字を最新にした'); await p.locator('input[name="f-value"][value="3"]').check({ force: true }); await p.click('[data-act="end"]'); await p.waitForTimeout(150);
       ok(!(await p.locator('#app').innerText()).includes('続きの再配置の提案'), '「継続」でも定例タスクは再配置の提案なし');
       // タスク画面：定例の作業の一覧
       await p.locator('[data-act="tab"][data-v="tasks"]:visible').first().click();

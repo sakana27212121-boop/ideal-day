@@ -87,14 +87,15 @@ function questWin(D) {
 }
 
 export function routeWin(D, opts = {}) {
-  const tl = D.timeline(), h = new Date().getHours(), td = D.today();
+  const tl = D.timeline(), h = new Date().getHours(), td = D.today(), tday = D.isTemplateDay(td);
   const late = h < DAY_START_HOUR ? `<p class="meta read" style="margin-top:0">0時〜${DAY_START_HOUR}時は前日（${md(td)}）として記録します。${md(addDays(td, 1))}の旅程は${DAY_START_HOUR}時から表示されます。</p>` : '';
   return `<section class="win full"><span class="tag">${T('route')}</span>${late}
     ${tl.length ? `<ol class="route">${tl.map((b) => `<li class="${b.state}" style="--c:${KC[b.kind] || '#5d6f68'}"><span class="t">${fmt(b.start_min)}</span><span class="node"></span>
-      <button class="lbl" data-act="sheet" data-v="block" data-id="${b.id}" aria-label="${E(b.label)}（${fmt(b.start_min)}から${dur(b.dur)}）を編集">${E(b.label)}${b.fixed ? '<span class="fixed">固定</span>' : ''}<span class="dur">${dur(b.dur)}</span>${b.state === 'skipped' ? '<span class="fixed" style="color:var(--dim);border-color:var(--dim)">中止</span>' : ''}</button>
-      ${!b.fixed && b.status === 'planned' && b.state !== 'active' ? `<span class="mv"><button data-act="shift" data-id="${b.id}" data-n="-15" aria-label="${E(b.label)}を15分早める">−15</button><button data-act="shift" data-id="${b.id}" data-n="15" aria-label="${E(b.label)}を15分遅らせる">+15</button></span>` : '<span></span>'}</li>`).join('')}</ol>`
+      <button class="lbl" data-act="sheet" data-v="block" data-id="${b.id}" aria-label="${E(b.label)}（${fmt(b.start_min)}から${dur(b.dur)}）${tday ? 'の詳細' : 'を編集'}">${E(b.label)}${b.fixed ? '<span class="fixed">固定</span>' : ''}<span class="dur">${dur(b.dur)}</span>${b.state === 'skipped' ? '<span class="fixed" style="color:var(--dim);border-color:var(--dim)">中止</span>' : ''}</button>
+      ${!tday && !b.fixed && b.status === 'planned' && b.state !== 'active' ? `<span class="mv"><button data-act="shift" data-id="${b.id}" data-n="-15" aria-label="${E(b.label)}を15分早める">−15</button><button data-act="shift" data-id="${b.id}" data-n="15" aria-label="${E(b.label)}を15分遅らせる">+15</button></span>` : '<span></span>'}</li>`).join('')}</ol>`
     : `<p class="meta read">今日の予定はまだありません。</p>`}
-    <div class="row"><button class="btn small ghost" data-act="replan">空き時間にタスクを入れ直す</button><button class="btn small" data-act="sheet" data-v="block">予定を追加</button></div>
+    ${tday ? `<div class="row"><span class="meta" style="margin-right:auto">${E(D.dayTypes().find((x) => x.wd === D.dayTypeOf())?.label || '')}で進行中</span><button class="btn small" data-act="sheet" data-v="day">今日の型を変える</button></div>`
+      : `<div class="row"><button class="btn small ghost" data-act="replan">空き時間にタスクを入れ直す</button><button class="btn small" data-act="sheet" data-v="block">予定を追加</button></div>`}
   </section>`;
 }
 
@@ -179,6 +180,11 @@ export function growth(D, V) {
           ${r ? `<p class="meta read" style="margin:0"><span class="label rec">結果</span>${E(r.summary)}</p>` : ''}
           ${e.status === 'running' ? `<div class="row start"><button class="btn small" data-act="evaluate" data-id="${e.id}">${di + 1 >= e.days ? '結果を確認' : '途中経過を見る'}</button>${r ? `<button class="btn small" data-act="decide" data-id="${e.id}" data-v="keep">続ける</button><button class="btn small ghost" data-act="decide" data-id="${e.id}" data-v="revert">元に戻す</button><button class="btn small ghost" data-act="decide" data-id="${e.id}" data-v="other">別案を試す</button>` : ''}</div>` : ''}</div>`; }).join('')
         : '<p class="meta read">改善案を「1週間試す」と、ここで効果を確認できます。</p>'}</section>
+    <section class="win"><span class="tag">時間と成果の振り返り</span>
+      ${a.review.n ? `<div class="stat-grid"><div><span class="meta">10分以上の作業</span><b>${a.review.n}回</b></div><div><span class="meta">見合い（平均）</span><b>${a.review.avg ?? '−'}</b></div><div><span class="meta">見合わなかった時間</span><b>${dur(a.review.lowMin)}</b></div><div><span class="meta">やったこと記入</span><b>${a.review.withOutcome}/${a.review.n}</b></div></div>
+        ${[...a.review.low.map((x) => ['見合わない', x]), ...a.review.vague.filter((x) => !a.review.low.includes(x)).map((x) => ['あいまい', x]), ...a.review.missing.map((x) => ['未記入', x])].slice(0, 12).map(([tag, x]) => `<div class="item read"><div class="head"><span><span class="label ai" style="color:var(--hp)">${tag}</span>${md(x.date)} ${E(x.task || '')}</span><span class="meta">${dur(x.minutes)}・見合い${x.value_rating ?? '−'}</span></div><div class="meta">やったこと：${E(x.outcome || '（未記入）')}</div></div>`).join('') || '<p class="meta read">見直しが必要な作業はありません。</p>'}
+        <p class="meta read">「見合い」は自己評価です。相談用の書き出しを Claude Code に渡すと、時間に対して成果が妥当かを評価できます。</p>`
+      : '<p class="meta read">10分以上の作業を記録すると、かけた時間とやったことを並べて振り返れます。</p>'}</section>
     <section class="win"><span class="tag">予定時間と実績</span>${a.sessions.length ? `<div class="scroll"><table class="wide"><tr><th>日付</th><th>タスク</th><th>予定</th><th>実績</th><th>開始のずれ</th><th>状態</th><th>集中</th><th>体調</th></tr>
       ${a.sessions.slice(0, 30).map((s) => `<tr><td>${md(s.date)}</td><td>${E(s.task || '')}</td><td>${s.plan ? s.plan + '分' : '−'}</td><td>${s.minutes}分</td><td>${s.startGap == null ? '−' : (s.startGap > 0 ? '+' : '') + s.startGap + '分'}</td><td>${E(s.status || '')}</td><td>${s.focus ?? '−'}</td><td>${s.energy ?? '−'}</td></tr>`).join('')}</table></div>` : '<p class="meta read">作業の記録はまだありません。</p>'}
       ${D.paceRatio() ? `<p class="meta read">見積もり補正：実績は予定の平均${D.paceRatio().ratio}倍（${D.paceRatio().n}回分）。自動で予定を組むときに反映しています。</p>` : ''}</section>
@@ -248,12 +254,19 @@ export function endSheet(D, V) {
     <p class="meta">${E(t.title)} ／ ${String(st.getHours()).padStart(2, '0')}:${String(st.getMinutes()).padStart(2, '0')} 開始 ／ 実作業 ${dur(mins)}（自動記録）</p>
     <div class="menu">${opts('status', ['完了', '継続', '中断', '問題発生'], V.status || '継続')}</div>
     <label class="fld key"><span>次回どこから始めるか（いちばん大事）</span><input id="f-next" placeholder="例：3ページ目の図表から" value="${E(V.keepNext ? (h && h.next_step) || '' : '')}"></label>
-    <label class="fld"><span>今回進んだこと（任意）</span><input id="f-progress"></label>
+    ${outcomeFields('f')}
     <label class="fld"><span>残っていること（任意）</span><input id="f-remaining"></label>
     <div class="meta">集中度（任意）</div><div class="menu dots">${opts('focus', ['1', '2', '3', '4', '5'], '')}</div>
     <div class="meta">エネルギー・状態（任意）</div><div class="menu dots">${opts('energy', ['1', '2', '3', '4', '5'], '')}</div>
     <label class="fld"><span>問題点（任意）</span><input id="f-problem"></label>
     <div class="row"><button class="btn ghost" data-act="close">戻る</button><button class="btn go" data-act="end">${T('saveBtn')}</button></div></div></div>`;
+}
+
+// やったことの言語化と、かけた時間に見合う進み具合の自己評価（10分以上の作業は必須）
+export function outcomeFields(p) {
+  return `<label class="fld key"><span>やったこと（必須）：何を・どこまで。数やページなど具体的に</span><textarea id="${p}-outcome" rows="2" placeholder="例：企画書の3〜5ページの図表を差し替え、6ページの文章を直した"></textarea></label>
+    <p class="err" id="${p}-vague" hidden>少しあいまいです。何を・どこまで（数・ページ・問題数など）を書くと、あとで時間に見合ったか確かめやすくなります。このままでよければ、もう一度押すと記録します。</p>
+    <div class="meta">かけた時間に見合う進み具合だった？（必須）　1＝ほとんど進まず　3＝だいたい見合う　5＝時間以上に進んだ</div><div class="menu dots">${[1, 2, 3, 4, 5].map((o) => `<label><input type="radio" name="${p}-value" value="${o}">${o}</label>`).join('')}</div>`;
 }
 
 export function battle(D) {
@@ -290,6 +303,7 @@ export function taskSheet(D, V) {
 
 export function blockSheet(D, V) {
   const b = V.id ? D.db.get('schedule_blocks', V.id) : null;
+  if (b && (b.source === 'template' || D.isTemplateDay(b.date))) return blockInfo(D, b);
   const kinds = Object.entries(KIND).filter(([k]) => k !== 'task' || !b || b.kind === 'task');
   const label = b ? D.blockLabel(b) : '';
   return `<div class="overlay" role="dialog" aria-modal="true" aria-label="予定"><div class="win"><span class="tag">${b ? '予定の変更' : '予定を追加'}</span>
@@ -307,18 +321,44 @@ export function blockSheet(D, V) {
     <div class="row">${b ? `<button class="btn danger" data-act="deleteBlock" data-id="${b.id}">削除</button>` : ''}<button class="btn ghost" data-act="close">閉じる</button><button class="btn go" data-act="saveBlock" data-id="${b ? b.id : ''}">保存</button></div></div></div>`;
 }
 
+// 型の日の予定：変更はできない（変えるなら型ごと）。その時間にした作業を記録できる
+function blockInfo(D, b) {
+  const nm = new Date().getHours() * 60 + new Date().getMinutes(), now = b.date === D.today() && nm >= b.start_min && nm < b.start_min + b.dur, past = b.date < D.today() || nm >= b.start_min + b.dur;
+  const tasks = [...D.recurringTasks(), ...D.openTasks()], run = D.running(), label = D.blockLabel(b);
+  const ses = D.db.all('work_sessions').filter((x) => x.block_id === b.id && x.ended_at);
+  return `<div class="overlay" role="dialog" aria-modal="true" aria-label="予定の詳細"><div class="win"><span class="tag">予定の詳細</span>
+    <h2 style="font-size:20px">${E(label)}</h2><p class="meta">${fmt(b.start_min)}〜${fmt(b.start_min + b.dur)}（${dur(b.dur)}）${b.fixed ? '・固定予定' : ''}${b.status === 'done' ? '・済' : ''}</p>
+    <p class="meta read">型で決めた予定は1つずつは変えられません。変えるときは「今日の型を変える」で型ごと切り替えます。</p>
+    ${ses.length ? `<div class="meta">この時間の作業記録</div>${ses.map((x) => `<p class="read" style="margin:2px 0">・${E((D.task(x.task_id) || {}).title || '')} ${dur(x.minutes)}：${E(x.outcome || '（やったこと未記入）')}</p>`).join('')}` : ''}
+    ${b.kind !== 'task' && !run && (now || past) ? `<div class="item"><div class="meta">${now ? 'この時間に作業する' : 'この時間にした作業を書く'}（予定はそのまま、実績として記録）</div>
+      ${now ? `<label class="fld"><span>タスク</span><select id="bh-task">${tasks.map((t) => `<option value="${t.id}">${E(t.title)}</option>`).join('')}</select></label>` : ''}
+      <div class="row start">${now ? `<button class="btn go" data-act="startHere" data-id="${b.id}">ここで作業を始める</button>` : ''}<button class="btn" data-act="logBlock" data-id="${b.id}">${now ? 'もう終わった作業を書く' : 'この時間にした作業を書く'}</button></div></div>` : ''}
+    ${b.kind === 'task' && b.status === 'planned' && !run && D.task(b.task_id) ? `<div class="row start"><button class="btn go" data-act="open-start" data-id="${b.task_id}" data-block="${b.id}">▶ 開始</button></div>` : ''}
+    <div class="row"><button class="btn ghost" data-act="close">閉じる</button></div></div></div>`;
+}
+
+export function daySheet(D) {
+  const cur = D.dayTypeOf(), types = D.dayTypes();
+  return `<div class="overlay" role="dialog" aria-modal="true" aria-label="今日の型を変える"><div class="win"><span class="tag">今日の型を変える</span>
+    <p class="read" style="margin-top:0">予定は1つずつではなく、型ごと切り替えます。今から後の予定が、選んだ型の予定に置き換わります。終わった予定と作業の記録は残ります。</p>
+    <div class="menu" style="grid-template-columns:1fr">${types.map((t) => `<label><input type="radio" name="daytype" value="${t.wd}" ${t.wd === cur ? 'checked' : ''}>${t.label}<span class="meta" style="margin-left:auto">${E(t.desc)}${t.wd === cur ? '（今の型）' : ''}</span></label>`).join('')}</div>
+    <div class="row"><button class="btn ghost" data-act="close">やめる</button><button class="btn go" data-act="switchDay">この型に切り替える</button></div></div></div>`;
+}
+
 export function logSheet(D, V) {
   const tasks = [...D.recurringTasks(), ...D.openTasks()], now = new Date(), nm = now.getHours() * 60 + now.getMinutes();
+  const hb = V.logBlock ? D.db.get('schedule_blocks', V.logBlock) : null;
+  const s0 = hb ? hb.start_min : Math.max(0, Math.floor((nm - 60) / 5) * 5), e0 = hb ? Math.min(hb.start_min + hb.dur, hb.date === D.today() ? Math.floor(nm / 5) * 5 : 1440) : Math.floor(nm / 5) * 5;
   const opts = (name, list, cur) => list.map((o) => `<label><input type="radio" name="${name}" value="${o}" ${o === cur ? 'checked' : ''}>${o}</label>`).join('');
-  return `<div class="overlay" role="dialog" aria-modal="true" aria-label="あとから記録"><div class="win"><span class="tag">終わった作業をあとから記録</span>
-    <p class="meta read" style="margin-top:0">開始を押し忘れた作業を記録します。時間割には実績として入ります。</p>
+  return `<div class="overlay" role="dialog" aria-modal="true" aria-label="あとから記録"><div class="win"><span class="tag">${hb ? `${E(D.blockLabel(hb))}の時間にした作業` : '終わった作業をあとから記録'}</span>
+    <p class="meta read" style="margin-top:0">${hb ? '予定はそのままで、この時間の実績として記録します。' : '開始を押し忘れた作業を記録します。時間割には実績として入ります。'}</p>
     <label class="fld"><span>タスク</span><select id="l-task">${tasks.map((t) => `<option value="${t.id}" ${V.id === t.id ? 'selected' : ''}>${E(t.title)}</option>`).join('')}</select></label>
     <div class="fields"><label class="fld"><span>日付</span><select id="l-date"><option value="${D.today()}">今日</option><option value="${addDays(D.today(), -1)}">昨日</option></select></label>
-      <label class="fld"><span>開始</span><input id="l-start" type="time" value="${fmt(Math.max(0, Math.floor((nm - 60) / 5) * 5))}"></label>
-      <label class="fld"><span>終了</span><input id="l-end" type="time" value="${fmt(Math.floor(nm / 5) * 5)}"></label></div>
+      <label class="fld"><span>開始</span><input id="l-start" type="time" value="${fmt(s0)}"></label>
+      <label class="fld"><span>終了</span><input id="l-end" type="time" value="${fmt(e0)}"></label></div>
     <div class="menu">${opts('l-status', ['完了', '継続', '中断', '問題発生'], '継続')}</div>
-    <label class="fld key"><span>次回どこから始めるか（任意）</span><input id="l-next"></label>
-    <label class="fld"><span>進んだこと（任意）</span><input id="l-progress"></label>
+    ${outcomeFields('l')}
+    <label class="fld"><span>次回どこから始めるか（任意）</span><input id="l-next"></label>
     <div class="meta">集中度（任意）</div><div class="menu dots">${opts('l-focus', ['1', '2', '3', '4', '5'], '')}</div>
     <div class="meta">エネルギー・状態（任意）</div><div class="menu dots">${opts('l-energy', ['1', '2', '3', '4', '5'], '')}</div>
     <p class="err" id="l-err" hidden></p>

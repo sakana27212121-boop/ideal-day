@@ -93,7 +93,8 @@ async function run(name, ctxOpts) {
   // 5. 作業終了（予定60分 → 実際は長引く）→ 引き継ぎ → 予定変更の提案
   await p.clock.fastForward('01:20:00');
   await click('[data-act="open-end"][data-status="継続"]');
-  await p.fill('#f-next', '4ページ目の表から再開'); await p.fill('#f-progress', '3ページ目まで修正済み'); await p.fill('#f-remaining', '4〜10ページ');
+  await p.fill('#f-next', '4ページ目の表から再開'); await p.fill('#f-outcome', '3ページ目まで修正済み'); await p.fill('#f-remaining', '4〜10ページ');
+  await p.locator('input[name="f-value"][value="3"]').check({ force: true });
   await p.locator('input[name="focus"][value="4"]').check({ force: true });
   await shot('04-end');
   await click('[data-act="end"]'); await p.waitForTimeout(150);
