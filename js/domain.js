@@ -137,7 +137,7 @@ export function createDomain(db) {
   D.freeWindows = (date, fromMin, override = {}) => {
     const I = D.idealOrDefault();
     const lo = Math.max(toMin(I.work_start) ?? toMin(I.wake_time) + 60, fromMin ?? 0), hi = toMin(I.work_end) ?? (toMin(I.bed_time) - 120);
-    const busy = D.blocks(date).map((b) => { const st = override[b.id] ?? b.start_min; return [st, st + b.dur]; }).sort((a, b) => a[0] - b[0]);
+    const busy = D.blocks(date).filter((b) => b.status !== 'skipped').map((b) => { const st = override[b.id] ?? b.start_min; return [st, st + b.dur]; }).sort((a, b) => a[0] - b[0]);
     let wins = []; let cur = lo;
     busy.forEach(([s, e]) => { if (s > cur) wins.push([cur, Math.min(s, hi)]); cur = Math.max(cur, e); });
     if (cur < hi) wins.push([cur, hi]);
@@ -174,13 +174,39 @@ export function createDomain(db) {
     db.commit();
     return D.placeTasks(date, Math.ceil(n / 5) * 5, null);
   };
+  // 予定の中止（削除せず「中止」として残す。予定と実績の比較に使う）
+  D.relatedFixed = (id) => { // 固定予定と、時刻が隣り合う固定予定（例：大学の前後の移動）
+    const b = db.get('schedule_blocks', id); if (!b || !b.fixed) return [];
+    const fx = D.blocks(b.date).filter((x) => x.fixed && x.status === 'planned'); const out = new Set([b.id]); let grew = true;
+    while (grew) { grew = false; fx.forEach((x) => { if (out.has(x.id)) return; if ([...out].some((id2) => { const y = db.get('schedule_blocks', id2); return y.start_min + y.dur === x.start_min || x.start_min + x.dur === y.start_min; })) { out.add(x.id); grew = true; } }); }
+    out.delete(b.id); return fx.filter((x) => out.has(x.id));
+  };
+  D.skipBlocks = (ids) => { ids.forEach((id) => { const b = db.get('schedule_blocks', id); if (b && b.status === 'planned') db.put('schedule_blocks', { id, status: 'skipped' }, { batch: true }); }); db.commit(); };
+  D.unskipBlock = (id) => { const b = db.get('schedule_blocks', id); if (b && b.status === 'skipped') db.put('schedule_blocks', { id, status: 'planned' }); };
+  // 終わった作業をあとから記録する
+  D.logPast = (f) => {
+    const t = D.task(f.taskId); if (!t) return { error: 'タスクを選んでください' };
+    const s0 = f.startMin, e0 = f.endMin;
+    if (s0 == null || e0 == null || e0 <= s0) return { error: '終了は開始より後の時刻にしてください' };
+    const at = (m) => { const [y, mo, d] = f.date.split('-').map(Number); return new Date(y, mo - 1, d, 0, m); };
+    const st = at(s0), en = at(e0);
+    if (en > new Date()) return { error: 'まだ来ていない時刻は記録できません' };
+    const clash = db.all('work_sessions').filter((x) => x.ended_at && x.minutes > 0).find((x) => new Date(x.started_at) < en && st < new Date(x.ended_at));
+    if (clash) return { error: `${(D.task(clash.task_id) || {}).title || '別の作業'}の記録と時間が重なっています` };
+    const minutes = e0 - s0;
+    const blk = db.put('schedule_blocks', { id: uid(), date: f.date, start_min: s0, dur: minutes, kind: 'task', task_id: t.id, fixed: false, status: 'done', actual_min: minutes, source: 'user' }, { batch: true });
+    const ses = db.put('work_sessions', { id: uid(), task_id: t.id, block_id: blk.id, started_at: st.toISOString(), ended_at: en.toISOString(), paused_at: null, paused_ms: 0, minutes, status: f.status || '継続', focus: f.focus || null, energy: f.energy || null, problem: f.problem || null, memo: 'あとから記録' }, { batch: true });
+    if (f.progress || f.remaining || f.next) db.put('handoffs', { id: uid(), task_id: t.id, session_id: ses.id, progress: f.progress || null, remaining: f.remaining || null, next_step: f.next || null }, { batch: true });
+    if (f.status === '完了' && !t.recurring) db.put('tasks', { id: t.id, status: 'done', completed_at: en.toISOString() }, { batch: true });
+    db.commit(); return { ok: true, minutes };
+  };
   D.saveBlock = (v) => db.put('schedule_blocks', { date: D.today(), status: 'planned', source: 'user', fixed: false, ...v, id: v.id || uid() });
   D.deleteBlock = (id) => db.remove('schedule_blocks', id);
   D.shiftBlock = (id, delta) => { const b = db.get('schedule_blocks', id); if (b && !b.fixed) db.put('schedule_blocks', { id, start_min: b.start_min + delta }); };
   D.timeline = (date = D.today()) => {
     const n = nowMin(), run = D.running();
     return D.blocks(date).map((b) => ({ ...b, label: D.blockLabel(b), end: b.start_min + b.dur,
-      state: run && run.block_id === b.id ? 'active' : b.status === 'done' ? 'done' : (n >= b.start_min && n < b.start_min + b.dur) ? 'now' : n >= b.start_min + b.dur ? 'past' : 'future' }));
+      state: run && run.block_id === b.id ? 'active' : b.status === 'done' ? 'done' : b.status === 'skipped' ? 'skipped' : (n >= b.start_min && n < b.start_min + b.dur) ? 'now' : n >= b.start_min + b.dur ? 'past' : 'future' }));
   };
 
   // ---------- NEXT ACTION ----------
@@ -392,6 +418,8 @@ export function createDomain(db) {
     L.push('', '## 作業セッション（新しい順、最大30件。開始のずれ＝実際の開始−予定の開始）');
     if (!a.sessions.length) L.push('- なし');
     a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.planStart != null ? fmt(x.planStart) + '〜' : ''}${x.plan ?? '−'}分／実績${x.minutes}分${x.startGap != null ? `／開始のずれ${x.startGap > 0 ? '+' : ''}${x.startGap}分` : ''}／${x.status || '−'}／集中${x.focus ?? '−'}／体調${x.energy ?? '−'}` + (free && x.problem ? `／問題：${x.problem}` : '')); });
+    const sk = db.all('schedule_blocks').filter((x) => x.status === 'skipped' && a.rows.some((r) => r.date === x.date)).sort((x, y) => (x.date + x.start_min).localeCompare(y.date + y.start_min));
+    if (sk.length) L.push('', '## 中止した予定', ...sk.map((x) => `- ${md(x.date)} ${fmt(x.start_min)}〜${fmt(x.start_min + x.dur)} ${D.blockLabel(x)}`));
     L.push('', '## 集計', `- 平均睡眠 ${a.sleep ?? '−'}時間、理想どおりの起床 ${a.wakeOk}/${a.wakeN}日、運動 ${a.exerciseDays}日（記録 ${a.exerciseKnown}日中）、平均充実度 ${a.fulfill ?? '−'}、作業 ${dur(a.workMin)}、完了タスク ${a.completed}件`,
       `- 時間帯別の集中度：午前 ${a.focusBy.am.avg ?? '−'}（${a.focusBy.am.n}回）／午後 ${a.focusBy.pm.avg ?? '−'}（${a.focusBy.pm.n}回）／夜 ${a.focusBy.night.avg ?? '−'}（${a.focusBy.night.n}回）`);
     const ex = D.experiments(); if (ex.length) { L.push('', '## 改善実験'); ex.forEach((e) => { const r = D.result(e.id); L.push(`- ${e.title}（${md(e.start_date)}から${e.days}日・${e.status === 'running' ? '実施中' : e.decision || '終了'}）${r ? '：' + r.summary : ''}`); }); }

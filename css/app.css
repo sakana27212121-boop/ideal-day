@@ -141,7 +141,7 @@ dl.kv dt { color: var(--dim); font-size: 14px; } dl.kv dd { margin: 0; overflow-
 .battle textarea { min-height: 70px; }
 .propose { border-color: var(--mp); }
 .propose ul { padding-left: 1.2em; margin: 6px 0; }
-#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); z-index: 60; background: var(--window); border: 3px solid var(--gold); padding: 8px 14px; max-width: calc(100% - 32px); }
+#toast { pointer-events: none; position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); z-index: 60; background: var(--window); border: 3px solid var(--gold); padding: 8px 14px; max-width: calc(100% - 32px); }
 @media (min-width: 960px) { #toast { bottom: 24px; } }
 table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; } th, td { padding: 6px; border-bottom: 1px dashed var(--edge); text-align: left; } th { color: var(--dim); font-weight: 400; }
 .scroll { overflow-x: auto; }
@@ -162,3 +162,5 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-nu
 .stat-grid b { display: block; font-weight: 400; font-size: 20px; color: var(--gold); font-variant-numeric: tabular-nums; }
 table.wide { min-width: 480px; } table.wide th, table.wide td { white-space: nowrap; }
 .btn.off { color: var(--dim); border-color: var(--edge); text-decoration: line-through; }
+.route li.skipped .lbl { color: var(--dim); text-decoration: line-through; }
+.route li.skipped .node { opacity: .35; }

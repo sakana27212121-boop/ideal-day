@@ -4,6 +4,7 @@ import { createDomain } from './domain.js';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { uid, toMin, logicalDate, WD } from './util.js';
 import * as UI from './views.js';
+import * as Sound from './sound.js';
 
 const root = document.getElementById('app');
 const toastEl = document.getElementById('toast');
@@ -16,6 +17,7 @@ const TABS = ['home', 'habits', 'tasks', 'growth', 'ai', 'setup'];
 let client = null;
 let toastTimer;
 
+const sfx = (name) => Sound.play(name, D.prefs().sound !== false);
 function toast(msg) { if (!msg) return; toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (toastEl.hidden = true), 2600); }
 const val = (id) => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
 const radio = (n) => { const e = root.querySelector(`input[name="${n}"]:checked`); return e ? e.value : ''; };
@@ -41,7 +43,7 @@ function render() {
       <div class="topbar"><span class="day">${+today.slice(5, 7)}月${+today.slice(8)}日（${WD[new Date(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8)).getDay()]}）</span>${UI.syncBadge(db)}</div>
       ${back}${page}
       <div class="foot">${V.user ? `<span>${V.user.email || ''}</span><button data-act="logout">ログアウト</button>` : '<span>この端末のみで動作中（検証用）</span>'}<button data-act="syncNow">今すぐ同期</button></div></main></div>`;
-    html += { start: UI.startSheet, task: UI.taskSheet, block: UI.blockSheet, sleep: UI.sleepSheet }[V.sheet]?.(D, V) || '';
+    html += { start: UI.startSheet, task: UI.taskSheet, block: UI.blockSheet, sleep: UI.sleepSheet, log: UI.logSheet }[V.sheet]?.(D, V) || '';
   }
   root.innerHTML = html;
   if (keepId) { const e = document.getElementById(keepId); if (e) { e.focus(); try { if (selStart != null) e.setSelectionRange(selStart, selStart); } catch (x) { /* 選択位置を持たない入力 */ } } }
@@ -91,7 +93,12 @@ async function afterLoad() {
 let lastDay = logicalDate(), lastMinute = -1;
 setInterval(() => {
   const run = D.running();
-  if (run) document.querySelectorAll('[data-elapsed]').forEach((e) => (e.textContent = UI.elapsedClock(D.elapsedMs(run))));
+  if (run) {
+    document.querySelectorAll('[data-elapsed]').forEach((e) => (e.textContent = UI.elapsedClock(D.elapsedMs(run))));
+    // 予定の時間に達したら1回だけ知らせる（アプリを開いているとき）
+    const blk = run.block_id && D.db.raw('schedule_blocks', run.block_id);
+    if (blk && !run.paused_at && V.alerted !== run.id && D.elapsedMs(run) >= blk.dur * 60000) { V.alerted = run.id; sfx('timeup'); toast(`予定の${blk.dur}分になりました。区切りがよければ休憩を`); }
+  }
   const m = new Date().getMinutes();
   if (m !== lastMinute) { lastMinute = m; const day = logicalDate(); if (day !== lastDay) { lastDay = day; newDay(); } if (V.ready && !V.sheet) softRender(); }
 }, 1000);
@@ -109,14 +116,14 @@ const acts = {
   close: () => { V.sheet = null; render(); },
   mini: () => { V.mini = !V.mini; render(); },
   'open-start': (d) => { V.sheet = 'start'; V.id = d.id; V.block = d.block || null; render(); },
-  start: () => { const s = D.start(V.id, V.block); V.sheet = null; V.mini = false; if (s) toast('開始時刻を記録しました'); render(); },
+  start: () => { const s = D.start(V.id, V.block); V.sheet = null; V.mini = false; if (s) { sfx('start'); toast('開始時刻を記録しました'); } render(); },
   pause: () => { D.pause(); toast('一時停止しました'); },
   resume: () => { D.resume(); toast('再開しました'); },
   'open-end': (d) => { V.sheet = 'end'; V.status = d.status; render(); },
   end: () => {
     const f = { status: radio('status') || V.status || '継続', focus: +radio('focus') || null, energy: +radio('energy') || null, progress: val('f-progress'), remaining: val('f-remaining'), next: val('f-next'), problem: val('f-problem') };
     V.sheet = null; V.mini = false; V.tab = 'home';
-    const r = D.end(f);
+    const r = D.end(f); sfx(f.status === '完了' ? 'complete' : 'save');
     toast(f.status === '完了' ? 'タスクを完了にしました' : r && r.resched && r.resched.none ? '記録しました。今日は空きがないため、続きは明日の予定に入ります' : f.next ? '記録しました。次回はここから再開できます' : '記録しました');
     render(); return r;
   },
@@ -129,12 +136,12 @@ const acts = {
   rejectProposal: (d) => { D.rejectProposal(d.id); toast('予定は変更していません'); },
   shift: (d) => { D.shiftBlock(d.id, +d.n); },
   replan: () => { const n = D.replan(); toast(n ? `${n}件のタスクを空き時間に入れました` : '入れられる空き時間やタスクがありません'); },
-  wake: () => { const s = D.recordWake(); toast(s != null ? `起床を記録しました（睡眠 ${s}時間）` : '起床を記録しました'); },
+  wake: () => { sfx('tap'); const s = D.recordWake(); toast(s != null ? `起床を記録しました（睡眠 ${s}時間）` : '起床を記録しました'); },
   undoWake: () => { D.undoWake(); toast('起床の記録を取り消しました'); },
-  bed: () => { D.recordBed(); toast('就寝を記録しました。おやすみなさい'); },
+  bed: () => { sfx('tap'); D.recordBed(); toast('就寝を記録しました。おやすみなさい'); },
   undoBed: () => { D.undoBed(); toast('就寝の記録を取り消しました'); },
-  habit: (d) => D.toggleHabit(d.id),
-  rest: () => { D.addRest(); toast('休憩を記録しました'); },
+  habit: (d) => { sfx('tap'); D.toggleHabit(d.id); },
+  rest: () => { sfx('tap'); D.addRest(); toast('休憩を記録しました'); },
   scale: (d) => D.setScale(d.f, +d.n),
   saveNote: () => { D.putState(D.today(), { note: val('f-note') || null }); toast('保存しました'); },
   saveSleep: () => { const h = parseFloat(val('s-hours')); if (!(h >= 0 && h <= 16)) { toast('0〜16の数字で入力してください'); return; } D.setSleepHours(h); V.sheet = null; toast('睡眠時間を保存しました'); render(); },
@@ -142,6 +149,19 @@ const acts = {
   hideHabit: (d) => { D.hideHabit(d.id); toast('習慣を外しました（記録は残ります）'); },
   addChallenge: (d) => { D.addHabit(d.v); toast('習慣に追加しました'); },
   terms: () => { D.setPref('terms', UI.isGame() ? 'plain' : 'game'); },
+  sound: () => { const on = D.prefs().sound === false; D.setPref('sound', on); if (on) Sound.play('save'); toast(on ? 'サウンドをオンにしました（消音モードでは鳴りません）' : 'サウンドをオフにしました'); },
+  skipBlock: (d) => {
+    const ids = [d.id, ...[...root.querySelectorAll('[data-skip]')].filter((e) => e.checked).map((e) => e.dataset.skip)];
+    D.skipBlocks(ids); V.sheet = null; sfx('cancel'); toast(`${ids.length}件の予定を中止にしました（記録として残ります）`); render();
+  },
+  unskipBlock: (d) => { D.unskipBlock(d.id); V.sheet = null; toast('中止を取り消しました'); render(); },
+  logPast: () => {
+    const radio2 = (n) => { const e = root.querySelector(`input[name="${n}"]:checked`); return e ? e.value : ''; };
+    const r = D.logPast({ taskId: val('l-task'), date: val('l-date'), startMin: toMin(val('l-start')), endMin: toMin(val('l-end')), status: radio2('l-status') || '継続',
+      focus: +radio2('l-focus') || null, energy: +radio2('l-energy') || null, next: val('l-next'), progress: val('l-progress') });
+    if (r.error) { const e = document.getElementById('l-err'); if (e) { e.textContent = r.error; e.hidden = false; } return; }
+    V.sheet = null; sfx('save'); toast(`${r.minutes}分の作業を記録しました`); render();
+  },
   saveTask: (d) => {
     const title = val('t-title'); if (!title) { const e = document.getElementById('t-err'); if (e) e.hidden = false; document.getElementById('t-title')?.focus(); return; }
     const est = Math.max(5, Math.min(600, parseInt(val('t-est'), 10) || 30));
@@ -219,6 +239,7 @@ function readEvents() {
   });
 }
 
+root.addEventListener('pointerdown', () => Sound.unlock(), { once: true });
 root.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el || el.disabled) return;
   const a = el.dataset.act; if (!acts[a]) return;
