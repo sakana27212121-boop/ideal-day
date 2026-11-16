@@ -14,8 +14,8 @@ export const setTerms = (mode) => { game = mode !== 'plain'; };
 export const T = (k) => TERMS[k][game ? 0 : 1];
 export const isGame = () => game;
 
-const KC = { fixed: 'var(--hp)', task: 'var(--gold)', meal: 'var(--food)', rest: 'var(--mp)', exercise: 'var(--grass)', habit: 'var(--violet)', free: 'var(--pink)', buffer: '#5d6f68' };
-export const KIND = { task: 'タスク', fixed: '固定予定', meal: '食事', rest: '休憩', exercise: '運動', habit: '生活', free: '自由時間', buffer: '余白' };
+const KC = { fixed: 'var(--hp)', task: 'var(--gold)', meal: 'var(--food)', rest: 'var(--mp)', exercise: 'var(--grass)', habit: 'var(--violet)', free: 'var(--pink)', buffer: '#5d6f68', recover: '#7fd3c1' };
+export const KIND = { task: 'タスク', fixed: '固定予定', meal: '食事', rest: '休憩', exercise: '運動', habit: '生活', free: '自由時間', buffer: '余白', recover: '回復の時間' };
 const NAV = [['home', 'ホーム', '野営地'], ['habits', '生活習慣', 'ステータス'], ['tasks', 'タスク', 'クエスト'], ['growth', '分析', '冒険の記録'], ['ai', 'AI相談', '賢者']];
 
 // オリジナルのドット絵（旅人）
@@ -64,6 +64,7 @@ function statusWin(D, cls = '') {
       <button class="btn ${wake ? 'on' : ''}" data-act="${wake ? 'undoWake' : 'wake'}" aria-pressed="${!!wake}">${wake ? '起床 ' + hm(wake) : '起きた'}</button>
       ${meals.map(hb).join('')}${ex ? hb(ex) : ''}${custom.map(hb).join('')}
       <button class="btn" data-act="rest">休憩した${st.rest_count ? '（' + st.rest_count + '）' : ''}</button>
+      <button class="btn ${(st.recoveries || []).length ? 'on' : ''}" data-act="sheet" data-v="recover">回復を記録${(st.recoveries || []).length ? '（' + st.recoveries.length + '）' : ''}</button>
       <button class="btn ${bed ? 'on' : ''}" data-act="${bed ? 'undoBed' : 'bed'}" aria-pressed="${!!bed}">${bed ? '就寝 ' + hm(bed) : '寝る'}</button>
     </div>
     ${st.wake_at && st.sleep_hours == null ? `<p class="meta read" style="margin:10px 0 0">睡眠時間：前日の「寝る」が未記録のため計算できません。<button class="btn small ghost" data-act="sheet" data-v="sleep">入力する</button></p>` : ''}
@@ -180,6 +181,10 @@ export function growth(D, V) {
           ${r ? `<p class="meta read" style="margin:0"><span class="label rec">結果</span>${E(r.summary)}</p>` : ''}
           ${e.status === 'running' ? `<div class="row start"><button class="btn small" data-act="evaluate" data-id="${e.id}">${di + 1 >= e.days ? '結果を確認' : '途中経過を見る'}</button>${r ? `<button class="btn small" data-act="decide" data-id="${e.id}" data-v="keep">続ける</button><button class="btn small ghost" data-act="decide" data-id="${e.id}" data-v="revert">元に戻す</button><button class="btn small ghost" data-act="decide" data-id="${e.id}" data-v="other">別案を試す</button>` : ''}</div>` : ''}</div>`; }).join('')
         : '<p class="meta read">改善案を「1週間試す」と、ここで効果を確認できます。</p>'}</section>
+    ${(() => { const rs = D.recoveryStats(days); return `<section class="win"><span class="tag">回復の時間</span>
+      ${rs.all.length ? `${rs.acts.map((x) => `<div class="item read"><div class="head"><span>${E(x.activity)}</span><span class="meta">すっきり度 平均${x.avg}（${x.n}回）</span></div></div>`).join('')}
+        <p class="meta read">回復の時間を取った日 ${rs.withDays}日：元気 ${rs.cmp.energy[0] ?? '−'}・充実度 ${rs.cmp.fulfill[0] ?? '−'} ／ 取らなかった日 ${rs.withoutDays}日：元気 ${rs.cmp.energy[1] ?? '−'}・充実度 ${rs.cmp.fulfill[1] ?? '−'}${rs.withDays >= 3 && rs.withoutDays >= 3 ? '' : '（どちらも3日以上たまると比べられます）'}。相関であり、原因とは言い切れません。</p>`
+      : '<p class="meta read">回復の時間に試したことと、すっきり度を記録すると、自分に合うリフレッシュ方法が分かってきます。</p>'}</section>`; })()}
     <section class="win"><span class="tag">時間と成果の振り返り</span>
       ${a.review.n ? `<div class="stat-grid"><div><span class="meta">10分以上の作業</span><b>${a.review.n}回</b></div><div><span class="meta">見合い（平均）</span><b>${a.review.avg ?? '−'}</b></div><div><span class="meta">見合わなかった時間</span><b>${dur(a.review.lowMin)}</b></div><div><span class="meta">やったこと記入</span><b>${a.review.withOutcome}/${a.review.n}</b></div></div>
         ${[...a.review.low.map((x) => ['見合わない', x]), ...a.review.vague.filter((x) => !a.review.low.includes(x)).map((x) => ['あいまい', x]), ...a.review.missing.map((x) => ['未記入', x])].slice(0, 12).map(([tag, x]) => `<div class="item read"><div class="head"><span><span class="label ai" style="color:var(--hp)">${tag}</span>${md(x.date)} ${E(x.task || '')}</span><span class="meta">${dur(x.minutes)}・見合い${x.value_rating ?? '−'}</span></div><div class="meta">やったこと：${E(x.outcome || '（未記入）')}</div></div>`).join('') || '<p class="meta read">見直しが必要な作業はありません。</p>'}
@@ -330,11 +335,25 @@ function blockInfo(D, b) {
     <h2 style="font-size:20px">${E(label)}</h2><p class="meta">${fmt(b.start_min)}〜${fmt(b.start_min + b.dur)}（${dur(b.dur)}）${b.fixed ? '・固定予定' : ''}${b.status === 'done' ? '・済' : ''}</p>
     <p class="meta read">型で決めた予定は1つずつは変えられません。変えるときは「今日の型を変える」で型ごと切り替えます。</p>
     ${ses.length ? `<div class="meta">この時間の作業記録</div>${ses.map((x) => `<p class="read" style="margin:2px 0">・${E((D.task(x.task_id) || {}).title || '')} ${dur(x.minutes)}：${E(x.outcome || '（やったこと未記入）')}</p>`).join('')}` : ''}
-    ${b.kind !== 'task' && !run && (now || past) ? `<div class="item"><div class="meta">${now ? 'この時間に作業する' : 'この時間にした作業を書く'}（予定はそのまま、実績として記録）</div>
+    ${b.kind === 'recover' ? `<div class="row start"><button class="btn go" data-act="sheet" data-v="recover">回復の時間を記録</button></div>` : ''}
+    ${b.kind !== 'task' && b.kind !== 'recover' && !run && (now || past) ? `<div class="item"><div class="meta">${now ? 'この時間に作業する' : 'この時間にした作業を書く'}（予定はそのまま、実績として記録）</div>
       ${now ? `<label class="fld"><span>タスク</span><select id="bh-task">${tasks.map((t) => `<option value="${t.id}">${E(t.title)}</option>`).join('')}</select></label>` : ''}
       <div class="row start">${now ? `<button class="btn go" data-act="startHere" data-id="${b.id}">ここで作業を始める</button>` : ''}<button class="btn" data-act="logBlock" data-id="${b.id}">${now ? 'もう終わった作業を書く' : 'この時間にした作業を書く'}</button></div></div>` : ''}
     ${b.kind === 'task' && b.status === 'planned' && !run && D.task(b.task_id) ? `<div class="row start"><button class="btn go" data-act="open-start" data-id="${b.task_id}" data-block="${b.id}">▶ 開始</button></div>` : ''}
     <div class="row"><button class="btn ghost" data-act="close">閉じる</button></div></div></div>`;
+}
+
+export function recoverSheet(D) {
+  const today = D.recoveries();
+  return `<div class="overlay" role="dialog" aria-modal="true" aria-label="回復の時間"><div class="win"><span class="tag">回復の時間</span>
+    <p class="meta read" style="margin-top:0">仕事を忘れてリフレッシュできることを探しています。試したことと、すっきり度を記録してください。</p>
+    <div class="meta">何をした？（1つ選ぶ・または下に書く）</div>
+    <div class="menu" style="grid-template-columns:1fr 1fr">${D.RECOVERY_IDEAS.map((a) => `<label><input type="radio" name="r-act" value="${E(a)}">${E(a)}</label>`).join('')}</div>
+    <label class="fld"><span>そのほか（自由に）</span><input id="r-other" placeholder="例：川沿いを自転車で走った"></label>
+    <div class="meta">すっきり度（1＝変わらない　3＝少しすっきり　5＝かなりすっきり）</div><div class="menu dots">${[1, 2, 3, 4, 5].map((o) => `<label><input type="radio" name="r-score" value="${o}">${o}</label>`).join('')}</div>
+    <p class="err" id="r-err" hidden></p>
+    ${today.length ? `<div class="meta">今日の記録</div>${today.map((r) => `<p class="read" style="margin:2px 0">・${E(r.activity)}：${r.score}</p>`).join('')}` : ''}
+    <div class="row"><button class="btn ghost" data-act="close">閉じる</button><button class="btn go" data-act="saveRecovery">記録する</button></div></div></div>`;
 }
 
 export function daySheet(D) {

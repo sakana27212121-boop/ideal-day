@@ -64,6 +64,19 @@ export function createDomain(db) {
   D.undoWake = () => D.putState(D.today(), { wake_at: null });
   D.recordBed = () => D.putState(D.today(), { bed_at: new Date().toISOString() });
   D.undoBed = () => D.putState(D.today(), { bed_at: null });
+  // 回復の時間：何をしたか・すっきり度（1〜5）。候補から試して、自分に合うものを探す
+  D.RECOVERY_IDEAS = ['散歩（外を歩く）', 'ストレッチ', 'ゆっくり入浴', '音楽を聴くだけ', '誰かと話す', '料理・手を動かす家事', '横になって目を閉じる'];
+  D.recoveries = (date = D.today()) => ((D.state(date) || {}).recoveries || []);
+  D.addRecovery = (activity, score) => { const date = D.today(), st = D.state(date); D.putState(date, { recoveries: [...((st && st.recoveries) || []), { at: new Date().toISOString(), activity, score }] }); };
+  D.recoveryStats = (days = 14) => {
+    const dates = []; for (let i = days - 1; i >= 0; i--) dates.push(addDays(D.today(), -i));
+    const all = dates.flatMap((d) => D.recoveries(d).map((r) => ({ ...r, date: d })));
+    const by = {}; all.forEach((r) => { (by[r.activity] = by[r.activity] || []).push(r.score); });
+    const acts = Object.entries(by).map(([a, xs]) => ({ activity: a, n: xs.length, avg: avg(xs) })).sort((a, b) => (b.avg || 0) - (a.avg || 0));
+    const withR = dates.filter((d) => D.recoveries(d).length), without = dates.filter((d) => !D.recoveries(d).length && D.state(d));
+    const m = (ds, k) => avg(ds.map((d) => (D.state(d) || {})[k]).filter((x) => x != null));
+    return { all, acts, withDays: withR.length, withoutDays: without.length, cmp: { energy: [m(withR, 'energy'), m(without, 'energy')], fulfill: [m(withR, 'fulfill'), m(without, 'fulfill')] } };
+  };
   D.setScale = (field, n) => D.putState(D.today(), { [field]: n });
   D.addRest = () => { const s = D.state(); D.putState(D.today(), { rest_count: ((s && s.rest_count) || 0) + 1 }); };
   D.setSleepHours = (h) => D.putState(D.today(), { sleep_hours: h });
@@ -462,6 +475,8 @@ export function createDomain(db) {
     a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.planStart != null ? fmt(x.planStart) + '〜' : ''}${x.plan ?? '−'}分／実績${x.minutes}分${x.startGap != null ? `／開始のずれ${x.startGap > 0 ? '+' : ''}${x.startGap}分` : ''}／${x.status || '−'}／集中${x.focus ?? '−'}／体調${x.energy ?? '−'}／見合い${x.value_rating ?? '−'}${(() => { const b = db.raw('schedule_blocks', x.block_id); return b && b.kind !== 'task' ? `／${D.blockLabel(b)}の時間に作業` : ''; })()}` + (free ? `\n  - やったこと：${x.outcome || '（未記入）'}` : '') + (free && x.problem ? `／問題：${x.problem}` : '')); });
     const sk = db.all('schedule_blocks').filter((x) => x.status === 'skipped' && a.rows.some((r) => r.date === x.date)).sort((x, y) => (x.date + x.start_min).localeCompare(y.date + y.start_min));
     if (sk.length) L.push('', '## 中止した予定', ...sk.map((x) => `- ${md(x.date)} ${fmt(x.start_min)}〜${fmt(x.start_min + x.dur)} ${D.blockLabel(x)}`));
+    const rs = D.recoveryStats(days);
+    if (rs.all.length) L.push('', '## 回復の時間（何をしたか・すっきり度1〜5）', ...rs.all.map((r) => `- ${md(r.date)} ${fmt(tsMin(r.at, r.date))} ${r.activity}：${r.score}`));
     const sw = a.rows.map((r) => D.state(r.date)).filter((x) => x && x.template_wd != null);
     if (sw.length) L.push('', '## 型の切り替え', ...sw.map((x) => `- ${md(x.date)}：${'日月火水木金土'[weekday(x.date)]}曜 → ${D.dayTypeName(x.template_wd)}（${x.template_switched_at ? fmt(tsMin(x.template_switched_at, x.date)) : ''}に変更）`));
     L.push('', '## 集計', `- 平均睡眠 ${a.sleep ?? '−'}時間、理想どおりの起床 ${a.wakeOk}/${a.wakeN}日、運動 ${a.exerciseDays}日（記録 ${a.exerciseKnown}日中）、平均充実度 ${a.fulfill ?? '−'}、作業 ${dur(a.workMin)}、完了タスク ${a.completed}件`,

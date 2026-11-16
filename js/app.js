@@ -43,7 +43,7 @@ function render() {
       <div class="topbar"><span class="day">${+today.slice(5, 7)}月${+today.slice(8)}日（${WD[new Date(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8)).getDay()]}）</span>${UI.syncBadge(db)}</div>
       ${back}${page}
       <div class="foot">${V.user ? `<span>${V.user.email || ''}</span><button data-act="logout">ログアウト</button>` : '<span>この端末のみで動作中（検証用）</span>'}<button data-act="syncNow">今すぐ同期</button></div></main></div>`;
-    html += { start: UI.startSheet, task: UI.taskSheet, block: UI.blockSheet, sleep: UI.sleepSheet, log: UI.logSheet, day: UI.daySheet }[V.sheet]?.(D, V) || '';
+    html += { start: UI.startSheet, task: UI.taskSheet, block: UI.blockSheet, sleep: UI.sleepSheet, log: UI.logSheet, day: UI.daySheet, recover: UI.recoverSheet }[V.sheet]?.(D, V) || '';
   }
   root.innerHTML = html;
   if (keepId) { const e = document.getElementById(keepId); if (e) { e.focus(); try { if (selStart != null) e.setSelectionRange(selStart, selStart); } catch (x) { /* 選択位置を持たない入力 */ } } }
@@ -155,6 +155,12 @@ const acts = {
   skipBlock: (d) => {
     const ids = [d.id, ...[...root.querySelectorAll('[data-skip]')].filter((e) => e.checked).map((e) => e.dataset.skip)];
     D.skipBlocks(ids); V.sheet = null; sfx('cancel'); toast(`${ids.length}件の予定を中止にしました（記録として残ります）`); render();
+  },
+  saveRecovery: () => {
+    const act = val('r-other') || radio('r-act'), sc = +radio('r-score');
+    const e = document.getElementById('r-err');
+    if (!act || !sc) { if (e) { e.textContent = !act ? '何をしたかを選ぶか、書いてください' : 'すっきり度を選んでください'; e.hidden = false; } return; }
+    D.addRecovery(act, sc); V.sheet = null; sfx('save'); toast(`回復の時間を記録しました（${act}・${sc}）`); render();
   },
   switchDay: () => { const wd = +radio('daytype'); if (Number.isNaN(wd)) return; const okd = D.switchDay(wd); V.sheet = null;
     if (!okd) { toast('今日はすでに型を切り替えています（1日1回まで）'); render(); return; }
