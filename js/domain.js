@@ -472,7 +472,7 @@ export function createDomain(db) {
     const rt = D.recurringTasks(); if (rt.length) L.push('', '## 定例の作業（週の型）', ...rt.map((t) => `- ${t.title}：実績${D.workedMin(t.id)}分・${D.sessionsOf(t.id).length}回`));
     L.push('', '## 作業セッション（新しい順、最大30件。開始のずれ＝実際の開始−予定の開始）');
     if (!a.sessions.length) L.push('- なし');
-    a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.planStart != null ? fmt(x.planStart) + '〜' : ''}${x.plan ?? '−'}分／実績${x.minutes}分${x.startGap != null ? `／開始のずれ${x.startGap > 0 ? '+' : ''}${x.startGap}分` : ''}／${x.status || '−'}／集中${x.focus ?? '−'}／体調${x.energy ?? '−'}／見合い${x.value_rating ?? '−'}${(() => { const b = db.raw('schedule_blocks', x.block_id); return b && b.kind !== 'task' ? `／${D.blockLabel(b)}の時間に作業` : ''; })()}` + (free ? `\n  - やったこと：${x.outcome || '（未記入）'}` : '') + (free && x.problem ? `／問題：${x.problem}` : '')); });
+    a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.planStart != null ? fmt(x.planStart) + '〜' : ''}${x.plan ?? '−'}分／実績${x.minutes}分${x.startGap != null ? `／開始のずれ${x.startGap > 0 ? '+' : ''}${x.startGap}分` : ''}／${x.status || '−'}／集中${x.focus ?? '−'}／体調${x.energy ?? '−'}／見合い${x.value_rating ?? '−'}${(() => { const b = db.raw('schedule_blocks', x.block_id); return b && b.kind !== 'task' ? `／${D.blockLabel(b)}の時間に作業` : ''; })()}` + (free ? `\n  - やったこと：${x.outcome || '（未記入）'}` : '') + (() => { const r = D.sessionReview(x.id); return r ? `\n  - AIの評価（推測）：${r.payload.verdict}。${r.text}` : ''; })() + (free && x.problem ? `／問題：${x.problem}` : '')); });
     const sk = db.all('schedule_blocks').filter((x) => x.status === 'skipped' && a.rows.some((r) => r.date === x.date)).sort((x, y) => (x.date + x.start_min).localeCompare(y.date + y.start_min));
     if (sk.length) L.push('', '## 中止した予定', ...sk.map((x) => `- ${md(x.date)} ${fmt(x.start_min)}〜${fmt(x.start_min + x.dur)} ${D.blockLabel(x)}`));
     const rs = D.recoveryStats(days);
@@ -492,6 +492,10 @@ export function createDomain(db) {
     db.put('ai_messages', { id: uid(), role: 'system', content: 'AI相談はまだ接続していません（本体の完成後に接続します）。相談内容は保存しました。', context: {} }, { batch: true });
     db.commit();
   };
+  // AIの評価（Claude Code が毎晩作成。記録ではなく推測として扱う）
+  D.sessionReview = (sessionId) => db.all('improvement_proposals').filter((p) => p.kind === 'session_review' && p.payload && p.payload.session_id === sessionId).sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] || null;
+  D.dayReviews = () => { const all = db.all('improvement_proposals').filter((p) => p.kind === 'session_review' || p.kind === 'day_review');
+    const last = all.map((p) => p.date).sort().pop(); return last ? { date: last, day: all.find((p) => p.kind === 'day_review' && p.date === last) || null, items: all.filter((p) => p.kind === 'session_review' && p.date === last) } : null; };
   D.messages = () => db.all('ai_messages').sort((a, b) => a.updated_at.localeCompare(b.updated_at));
 
   return D;

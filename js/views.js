@@ -100,6 +100,17 @@ export function routeWin(D, opts = {}) {
   </section>`;
 }
 
+// AIの評価（推測）：最新の日の評価をホームに表示
+const VERDICT_C = { '見合う': 'var(--grass)', 'やや少ない': 'var(--gold)', '少ない': 'var(--hp)', '判断できない': 'var(--dim)' };
+function reviewWin(D) {
+  const r = D.dayReviews(); if (!r || r.date < addDays(D.today(), -1)) return '';
+  return `<section class="win full"><span class="tag blue">AIの評価（推測）${md(r.date)}</span>
+    ${r.day ? `<p class="read" style="margin-top:0">${E(r.day.text)}</p>` : ''}
+    ${r.items.slice(0, 4).map((x) => `<div class="item read"><div class="head"><span><span class="label" style="color:${VERDICT_C[x.payload.verdict] || 'var(--dim)'}">${E(x.payload.verdict)}</span>${E(x.payload.task || '')}</span><span class="meta">${dur(x.payload.minutes || 0)}</span></div>
+      <div>${E(x.text)}</div>${x.payload.hint ? `<div class="meta">次は：${E(x.payload.hint)}</div>` : ''}</div>`).join('')}
+    <p class="meta read" style="margin-bottom:0">「やったこと」の文章と時間から推測した評価です（成果物そのものは見ていません）。分析画面に一覧があります。</p></section>`;
+}
+
 function tipWin(D) { const t = D.tip(); return `<section class="win tip"><span class="tag">${T('hint')}</span><p><span class="label ${t.kind === '実験' ? 'exp' : 'ai'}">${t.kind}</span>${E(t.text)}</p><p class="meta read">${E(t.basis)}</p></section>`; }
 
 function proposalWin(D) {
@@ -117,7 +128,7 @@ function proposalWin(D) {
   }).join('');
 }
 
-export function home(D) { return `<div class="grid home">${proposalWin(D)}${questWin(D)}${statusWin(D)}${tipWin(D)}${routeWin(D)}</div>`; }
+export function home(D) { return `<div class="grid home">${proposalWin(D)}${questWin(D)}${statusWin(D)}${tipWin(D)}${reviewWin(D)}${routeWin(D)}</div>`; }
 
 // ---------------- 生活習慣 ----------------
 export function habits(D) {
@@ -187,7 +198,8 @@ export function growth(D, V) {
       : '<p class="meta read">回復の時間に試したことと、すっきり度を記録すると、自分に合うリフレッシュ方法が分かってきます。</p>'}</section>`; })()}
     <section class="win"><span class="tag">時間と成果の振り返り</span>
       ${a.review.n ? `<div class="stat-grid"><div><span class="meta">10分以上の作業</span><b>${a.review.n}回</b></div><div><span class="meta">見合い（平均）</span><b>${a.review.avg ?? '−'}</b></div><div><span class="meta">見合わなかった時間</span><b>${dur(a.review.lowMin)}</b></div><div><span class="meta">やったこと記入</span><b>${a.review.withOutcome}/${a.review.n}</b></div></div>
-        ${[...a.review.low.map((x) => ['見合わない', x]), ...a.review.vague.filter((x) => !a.review.low.includes(x)).map((x) => ['あいまい', x]), ...a.review.missing.map((x) => ['未記入', x])].slice(0, 12).map(([tag, x]) => `<div class="item read"><div class="head"><span><span class="label ai" style="color:var(--hp)">${tag}</span>${md(x.date)} ${E(x.task || '')}</span><span class="meta">${dur(x.minutes)}・見合い${x.value_rating ?? '−'}</span></div><div class="meta">やったこと：${E(x.outcome || '（未記入）')}</div></div>`).join('') || '<p class="meta read">見直しが必要な作業はありません。</p>'}
+        ${[...a.review.low.map((x) => ['見合わない', x]), ...a.review.vague.filter((x) => !a.review.low.includes(x)).map((x) => ['あいまい', x]), ...a.review.missing.map((x) => ['未記入', x])].slice(0, 12).map(([tag, x]) => `<div class="item read"><div class="head"><span><span class="label ai" style="color:var(--hp)">${tag}</span>${md(x.date)} ${E(x.task || '')}</span><span class="meta">${dur(x.minutes)}・見合い${x.value_rating ?? '−'}</span></div><div class="meta">やったこと：${E(x.outcome || '（未記入）')}</div>${(() => { const r = D.sessionReview(x.id); return r ? `<div class="meta"><span class="label" style="color:${VERDICT_C[r.payload.verdict] || 'var(--dim)'}">AI：${E(r.payload.verdict)}</span>${E(r.text)}</div>` : ''; })()}</div>`).join('') || '<p class="meta read">見直しが必要な作業はありません。</p>'}
+        ${(() => { const rv = a.sessions.map((x) => [x, D.sessionReview(x.id)]).filter(([, r]) => r); return rv.length ? `<div class="meta" style="margin-top:8px">AIの評価（推測）</div>${rv.slice(0, 10).map(([x, r]) => `<div class="item read"><div class="head"><span><span class="label" style="color:${VERDICT_C[r.payload.verdict] || 'var(--dim)'}">${E(r.payload.verdict)}</span>${md(x.date)} ${E(x.task || '')}</span><span class="meta">${dur(x.minutes)}・自己評価${x.value_rating ?? '−'}</span></div><div>${E(r.text)}</div>${r.payload.hint ? `<div class="meta">次は：${E(r.payload.hint)}</div>` : ''}</div>`).join('')}` : ''; })()}
         <p class="meta read">「見合い」は自己評価です。相談用の書き出しを Claude Code に渡すと、時間に対して成果が妥当かを評価できます。</p>`
       : '<p class="meta read">10分以上の作業を記録すると、かけた時間とやったことを並べて振り返れます。</p>'}</section>
     <section class="win"><span class="tag">予定時間と実績</span>${a.sessions.length ? `<div class="scroll"><table class="wide"><tr><th>日付</th><th>タスク</th><th>予定</th><th>実績</th><th>開始のずれ</th><th>状態</th><th>集中</th><th>体調</th></tr>
