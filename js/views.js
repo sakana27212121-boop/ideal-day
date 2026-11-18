@@ -130,7 +130,14 @@ function proposalWin(D) {
   }).join('');
 }
 
-export function home(D) { return `<div class="grid home">${proposalWin(D)}${questWin(D)}${statusWin(D)}${tipWin(D)}${reviewWin(D)}${routeWin(D)}</div>`; }
+function syncWarn(D) {
+  const db = D.db, s = db.status; if (s.state !== 'error' || !db.dirty.size) return '';
+  return `<section class="win full" role="alert"><span class="tag" style="background:var(--hp)">同期できていません</span>
+    <p class="read" style="margin-top:0">サーバーに送れていない記録が${db.dirty.size}件あります（この端末には保存されています）。続く場合は、下の内容を伝えてください。</p>
+    <p class="meta read">${E(s.error || '')}</p><div class="row start"><button class="btn go" data-act="syncNow">もう一度送る</button></div></section>`;
+}
+
+export function home(D) { return `<div class="grid home">${syncWarn(D)}${proposalWin(D)}${questWin(D)}${statusWin(D)}${tipWin(D)}${reviewWin(D)}${routeWin(D)}</div>`; }
 
 // ---------------- 生活習慣 ----------------
 export function habits(D) {

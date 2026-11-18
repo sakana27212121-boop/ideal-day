@@ -74,10 +74,16 @@ export class DB {
     for (const t of Object.keys(byTable)) {
       const rows = byTable[t].map((id) => this.data[t][id]).filter(Boolean).map((r) => { const { synced_at, ...rest } = r; return { ...rest, user_id: this.uid }; });
       if (!rows.length) continue;
-      const snap = rows.map((r) => [r.id, r.updated_at]);
-      const { error } = await this.client.from(t).upsert(rows);
-      if (error) throw new Error(t + ': ' + error.message);
-      snap.forEach(([id, u]) => { if (this.data[t][id] && this.data[t][id].updated_at === u) this.dirty.delete(t + ':' + id); });
+      // 項目の組み合わせが同じ行ごとに送る。まとめて送ると、ほかの行にしかない項目が空（NULL）として扱われ、
+      // 「空にできない項目」で全体が失敗する（11/17：新しい日の記録に回復の時間の項目がなく、同期が止まった）
+      const groups = {};
+      rows.forEach((r) => { const k = Object.keys(r).sort().join(','); (groups[k] = groups[k] || []).push(r); });
+      for (const g of Object.values(groups)) {
+        const snap = g.map((r) => [r.id, r.updated_at]);
+        const { error } = await this.client.from(t).upsert(g);
+        if (error) throw new Error(t + ': ' + error.message);
+        snap.forEach(([id, u]) => { if (this.data[t][id] && this.data[t][id].updated_at === u) this.dirty.delete(t + ':' + id); });
+      }
     }
   }
 

@@ -40,7 +40,7 @@ export function createDomain(db) {
   // ---------- 習慣・日々の状態 ----------
   D.habits = () => db.all('habits').filter((h) => h.active !== false).sort((a, b) => a.sort - b.sort);
   D.state = (date = D.today()) => db.all('daily_states').find((s) => s.date === date) || null;
-  D.putState = (date, patch) => { const s = D.state(date); return db.put('daily_states', { ...(s || { id: uid(), date, rest_count: 0 }), ...patch }); };
+  D.putState = (date, patch) => { const s = D.state(date); return db.put('daily_states', { ...(s || { id: uid(), date, rest_count: 0, recoveries: [] }), ...patch }); };
   D.habitLog = (date, hid) => db.all('habit_logs').find((l) => l.date === date && l.habit_id === hid) || null;
   // 習慣の記録は3状態：null＝未記録、true＝した、false＝しなかった（未記録を「しなかった」と混同しない）
   D.habitStatus = (date, hid) => { const l = D.habitLog(date, hid); return l ? l.done !== false : null; };
@@ -241,7 +241,7 @@ export function createDomain(db) {
     if (D.switchedToday(date)) return false;
     D.applyDayType(date, wd);
     const st = D.state(date);
-    db.put('daily_states', { ...(st || { id: uid(), date, rest_count: 0 }), template_wd: wd, template_switched_at: new Date().toISOString() }, { batch: true });
+    db.put('daily_states', { ...(st || { id: uid(), date, rest_count: 0, recoveries: [] }), template_wd: wd, template_switched_at: new Date().toISOString() }, { batch: true });
     db.commit(); return true;
   };
   // 成果の書き方があいまいか（具体的に書くよう一度だけ促す。記録は妨げない）

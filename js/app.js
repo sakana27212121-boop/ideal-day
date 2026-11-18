@@ -52,7 +52,7 @@ function render() {
 function softRender() { if (V.acting) { V.pending = true; return; } const a = document.activeElement; if (a && root.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) { V.pending = true; return; } render(); }
 root.addEventListener('focusout', () => setTimeout(() => { if (V.pending && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) { V.pending = false; render(); } }, 0));
 
-db.on((src) => { if (src === 'remote') { D.ensureDay(); softRender(); } else if (src === 'status') { document.querySelectorAll('.sync').forEach((e) => (e.outerHTML = UI.syncBadge(db))); } else softRender(); });
+db.on((src) => { if (src === 'remote') { D.ensureDay(); softRender(); } else if (src === 'status') { document.querySelectorAll('.sync').forEach((e) => (e.outerHTML = UI.syncBadge(db))); const warn = db.status.state === 'error'; if (warn || V.syncWarned) { V.syncWarned = warn; if (db.status.state !== 'syncing') softRender(); } } else softRender(); });
 
 // ---------- 起動 ----------
 async function boot() {
