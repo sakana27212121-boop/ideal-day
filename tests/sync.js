@@ -78,6 +78,7 @@ const text = (p) => p.locator('#app').innerText();
     await phoneCtx.setOffline(true);
     await phone.click('[data-act="scale"][data-f="energy"][data-n="3"]');
     await sync(phone);
+    await phone.waitForFunction(() => window.__app.db.status.state !== 'syncing', null, { timeout: 10000 }).catch(() => {});
     ok(['offline', 'error'].includes(await phone.evaluate(() => window.__app.db.status.state)), 'iPhone：オフラインでも記録でき、同期待ちとして表示される');
     ok((await phone.locator('.sync').first().innerText()).match(/オフライン|同期できません/), 'iPhone：画面に同期できていないことが表示される');
     await phoneCtx.setOffline(false);

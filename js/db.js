@@ -55,8 +55,11 @@ export class DB {
   async _run() {
     this.syncing = true; this.status = { ...this.status, state: 'syncing' }; this.emit('status');
     try {
-      await this.push();
+      // 送信に失敗しても受信は行う（送れない間もほかの端末やサーバーの変更は受け取る）。失敗は最後に報告する
+      let pushErr = null;
+      try { await this.push(); } catch (e) { pushErr = e; }
       const changed = await this.pull();
+      if (pushErr) { this.persist(); if (changed) this.emit('remote'); throw pushErr; }
       this.status = { state: 'ok', at: new Date(), error: null };
       this.persist();
       if (changed) this.emit('remote');
