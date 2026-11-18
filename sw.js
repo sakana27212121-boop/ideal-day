@@ -1,5 +1,5 @@
 // オフライン対応：アプリ本体は「ネット優先・失敗したら保存版」、書体は「保存版優先」。Supabaseへの通信は扱わない
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/db.js', 'js/domain.js', 'js/views.js', 'js/util.js', 'js/config.js', 'js/sound.js',
   'vendor/supabase.js', 'vendor/fonts/dotgothic16.css', 'vendor/fonts/biz-udpgothic.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open('shell-' + VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });

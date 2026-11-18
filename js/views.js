@@ -105,10 +105,12 @@ const VERDICT_C = { '見合う': 'var(--grass)', 'やや少ない': 'var(--gold)
 function reviewWin(D) {
   const r = D.dayReviews(); if (!r || r.date < addDays(D.today(), -1)) return '';
   return `<section class="win full"><span class="tag blue">AIの評価（推測）${md(r.date)}</span>
-    ${r.day ? `<p class="read" style="margin-top:0">${E(r.day.text)}</p>` : ''}
+    ${r.day ? `<div class="meta">${md(r.date)}の振り返り</div><p class="read" style="margin-top:2px">${E(r.day.text)}</p>` : ''}
+    ${r.day && (r.day.payload.advice || []).length ? `<div class="meta">${r.date < D.today() ? '今日' : '明日'}へのアドバイス</div><ul class="read" style="margin:2px 0 8px;padding-left:20px">${r.day.payload.advice.map((x) => `<li>${E(x)}</li>`).join('')}</ul>` : ''}
+    ${r.items.length ? `<div class="meta">作業ごとの評価</div>` : ''}
     ${r.items.slice(0, 4).map((x) => `<div class="item read"><div class="head"><span><span class="label" style="color:${VERDICT_C[x.payload.verdict] || 'var(--dim)'}">${E(x.payload.verdict)}</span>${E(x.payload.task || '')}</span><span class="meta">${dur(x.payload.minutes || 0)}</span></div>
       <div>${E(x.text)}</div>${x.payload.hint ? `<div class="meta">次は：${E(x.payload.hint)}</div>` : ''}</div>`).join('')}
-    <p class="meta read" style="margin-bottom:0">「やったこと」の文章と時間から推測した評価です（成果物そのものは見ていません）。分析画面に一覧があります。</p></section>`;
+    <p class="meta read" style="margin-bottom:0">毎晩22:35に、その日の記録から推測して作ります（成果物そのものは見ていません）。分析画面に一覧があります。</p></section>`;
 }
 
 function tipWin(D) { const t = D.tip(); return `<section class="win tip"><span class="tag">${T('hint')}</span><p><span class="label ${t.kind === '実験' ? 'exp' : 'ai'}">${t.kind}</span>${E(t.text)}</p><p class="meta read">${E(t.basis)}</p></section>`; }
@@ -348,8 +350,8 @@ function blockInfo(D, b) {
     <p class="meta read">型で決めた予定は1つずつは変えられません。変えるときは「今日の型を変える」で型ごと切り替えます。</p>
     ${ses.length ? `<div class="meta">この時間の作業記録</div>${ses.map((x) => `<p class="read" style="margin:2px 0">・${E((D.task(x.task_id) || {}).title || '')} ${dur(x.minutes)}：${E(x.outcome || '（やったこと未記入）')}</p>`).join('')}` : ''}
     ${b.kind === 'recover' ? `<div class="row start"><button class="btn go" data-act="sheet" data-v="recover">回復の時間を記録</button></div>` : ''}
-    ${b.kind !== 'task' && b.kind !== 'recover' && !run && (now || past) ? `<div class="item"><div class="meta">${now ? 'この時間に作業する' : 'この時間にした作業を書く'}（予定はそのまま、実績として記録）</div>
-      ${now ? `<label class="fld"><span>タスク</span><select id="bh-task">${tasks.map((t) => `<option value="${t.id}">${E(t.title)}</option>`).join('')}</select></label>` : ''}
+    ${b.kind !== 'recover' && !run && (now || past) && (b.kind !== 'task' || tasks.some((t) => t.id !== b.task_id)) ? `<div class="item"><div class="meta">${b.kind === 'task' ? (now ? 'この時間にほかの作業をする（例：課題がない日）' : 'この時間にしたほかの作業を書く') : now ? 'この時間に作業する' : 'この時間にした作業を書く'}（予定はそのまま、実績として記録）</div>
+      ${now ? `<label class="fld"><span>タスク</span><select id="bh-task">${tasks.filter((t) => t.id !== b.task_id).map((t) => `<option value="${t.id}">${E(t.title)}</option>`).join('')}</select></label>` : ''}
       <div class="row start">${now ? `<button class="btn go" data-act="startHere" data-id="${b.id}">ここで作業を始める</button>` : ''}<button class="btn" data-act="logBlock" data-id="${b.id}">${now ? 'もう終わった作業を書く' : 'この時間にした作業を書く'}</button></div></div>` : ''}
     ${b.kind === 'task' && b.status === 'planned' && !run && D.task(b.task_id) ? `<div class="row start"><button class="btn go" data-act="open-start" data-id="${b.task_id}" data-block="${b.id}">▶ 開始</button></div>` : ''}
     <div class="row"><button class="btn ghost" data-act="close">閉じる</button></div></div></div>`;

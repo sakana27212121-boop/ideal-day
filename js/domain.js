@@ -299,7 +299,7 @@ export function createDomain(db) {
     const b = db.get('schedule_blocks', s.block_id);
     let proposal = null;
     if (b) {
-      if (b.kind === 'task') db.put('schedule_blocks', { id: b.id, status: 'done', actual_min: minutes }, { batch: true }); // 移動などの時間に作業した場合、その予定は変えない
+      if (b.kind === 'task' && b.task_id === s.task_id) db.put('schedule_blocks', { id: b.id, status: 'done', actual_min: minutes }, { batch: true }); // 移動の時間や、ほかの作業の時間（課題がない日の大学課題の時間など）に作業した場合、その予定は変えない
       const endMin = nowMin(endedAt), planEnd = b.start_min + b.dur, delta = Math.round((endMin - planEnd) / 5) * 5;
       // 型で動かす日は、予定を1つずつ動かす提案を出さない（変えるなら型ごと）
       if (Math.abs(delta) >= 10 && b.date === D.today() && !D.isTemplateDay(b.date)) proposal = D.makeShiftProposal(b, delta, endMin);
@@ -472,10 +472,11 @@ export function createDomain(db) {
     const rt = D.recurringTasks(); if (rt.length) L.push('', '## 定例の作業（週の型）', ...rt.map((t) => `- ${t.title}：実績${D.workedMin(t.id)}分・${D.sessionsOf(t.id).length}回`));
     L.push('', '## 作業セッション（新しい順、最大30件。開始のずれ＝実際の開始−予定の開始）');
     if (!a.sessions.length) L.push('- なし');
-    a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.planStart != null ? fmt(x.planStart) + '〜' : ''}${x.plan ?? '−'}分／実績${x.minutes}分${x.startGap != null ? `／開始のずれ${x.startGap > 0 ? '+' : ''}${x.startGap}分` : ''}／${x.status || '−'}／集中${x.focus ?? '−'}／体調${x.energy ?? '−'}／見合い${x.value_rating ?? '−'}${(() => { const b = db.raw('schedule_blocks', x.block_id); return b && b.kind !== 'task' ? `／${D.blockLabel(b)}の時間に作業` : ''; })()}` + (free ? `\n  - やったこと：${x.outcome || '（未記入）'}` : '') + (() => { const r = D.sessionReview(x.id); return r ? `\n  - AIの評価（推測）：${r.payload.verdict}。${r.text}` : ''; })() + (free && x.problem ? `／問題：${x.problem}` : '')); });
+    a.sessions.slice(0, 30).forEach((x) => { const d = new Date(x.started_at); L.push(`- ${md(x.date)} ${fmt(d.getHours() * 60 + d.getMinutes())}〜 ${x.task || ''}：予定${x.planStart != null ? fmt(x.planStart) + '〜' : ''}${x.plan ?? '−'}分／実績${x.minutes}分${x.startGap != null ? `／開始のずれ${x.startGap > 0 ? '+' : ''}${x.startGap}分` : ''}／${x.status || '−'}／集中${x.focus ?? '−'}／体調${x.energy ?? '−'}／見合い${x.value_rating ?? '−'}${(() => { const b = db.raw('schedule_blocks', x.block_id); return b && (b.kind !== 'task' || b.task_id !== x.task_id) ? `／${D.blockLabel(b)}の時間に作業` : ''; })()}` + (free ? `\n  - やったこと：${x.outcome || '（未記入）'}` : '') + (() => { const r = D.sessionReview(x.id); return r ? `\n  - AIの評価（推測）：${r.payload.verdict}。${r.text}` : ''; })() + (free && x.problem ? `／問題：${x.problem}` : '')); });
     const sk = db.all('schedule_blocks').filter((x) => x.status === 'skipped' && a.rows.some((r) => r.date === x.date)).sort((x, y) => (x.date + x.start_min).localeCompare(y.date + y.start_min));
     if (sk.length) L.push('', '## 中止した予定', ...sk.map((x) => `- ${md(x.date)} ${fmt(x.start_min)}〜${fmt(x.start_min + x.dur)} ${D.blockLabel(x)}`));
     const rs = D.recoveryStats(days);
+    { const dr = D.dayReviewList(days); if (dr.length) L.push('', '## AIの1日の振り返り（推測）', ...dr.map((r) => `- ${md(r.date)}：${r.text}${(r.payload.advice || []).length ? `\n  - 翌日へ：${r.payload.advice.join('／')}` : ''}`)); }
     if (rs.all.length) L.push('', '## 回復の時間（何をしたか・すっきり度1〜5）', ...rs.all.map((r) => `- ${md(r.date)} ${fmt(tsMin(r.at, r.date))} ${r.activity}：${r.score}`));
     const sw = a.rows.map((r) => D.state(r.date)).filter((x) => x && x.template_wd != null);
     if (sw.length) L.push('', '## 型の切り替え', ...sw.map((x) => `- ${md(x.date)}：${'日月火水木金土'[weekday(x.date)]}曜 → ${D.dayTypeName(x.template_wd)}（${x.template_switched_at ? fmt(tsMin(x.template_switched_at, x.date)) : ''}に変更）`));
@@ -496,6 +497,7 @@ export function createDomain(db) {
   D.sessionReview = (sessionId) => db.all('improvement_proposals').filter((p) => p.kind === 'session_review' && p.payload && p.payload.session_id === sessionId).sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] || null;
   D.dayReviews = () => { const all = db.all('improvement_proposals').filter((p) => p.kind === 'session_review' || p.kind === 'day_review');
     const last = all.map((p) => p.date).sort().pop(); return last ? { date: last, day: all.find((p) => p.kind === 'day_review' && p.date === last) || null, items: all.filter((p) => p.kind === 'session_review' && p.date === last) } : null; };
+  D.dayReviewList = (days) => { const from = addDays(D.today(), -(days - 1)); return db.all('improvement_proposals').filter((p) => p.kind === 'day_review' && p.date >= from).sort((a, b) => a.date.localeCompare(b.date)); };
   D.messages = () => db.all('ai_messages').sort((a, b) => a.updated_at.localeCompare(b.updated_at));
 
   return D;
